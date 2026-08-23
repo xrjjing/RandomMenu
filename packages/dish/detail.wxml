@@ -73,7 +73,7 @@
     </view>
   </block>
 
-  <!-- 删除确认弹窗 -->
+  <!-- 第一层删除确认弹窗(现有):确定后进入第二层,不直接删除 -->
   <t-dialog
     visible="{{deleteVisible}}"
     title="删除菜品"
@@ -82,6 +82,17 @@
     cancel-btn="取消"
     bind:confirm="onDeleteConfirm"
     bind:cancel="onDeleteCancel"
+  />
+
+  <!-- 第二层删除再次确认弹窗(防误删):第一层确定后弹出,此层确定才执行删除 -->
+  <t-dialog
+    visible="{{deleteReconfirmVisible}}"
+    title="再次确认"
+    content="确定要删除『{{dish.name}}』吗？"
+    confirm-btn="{{deleteReconfirmBtn}}"
+    cancel-btn="取消"
+    bind:confirm="onDeleteReconfirmConfirm"
+    bind:cancel="onDeleteReconfirmCancel"
   />
 
   <!-- 统一轻提示 -->

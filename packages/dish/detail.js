@@ -6,7 +6,7 @@
  * - 头部卡:菜名、细分 tags、cookTime · difficulty 徽章、isBuiltin「内置」角标
  * - 原料卡:dish.ingredients 逐行「名称 + 用量」,调料行名称后加灰字「(调料)」
  * - 做法卡:steps 有序步骤列表,为空显示引导文案
- * - 底部操作栏:编辑 → /packages/dish/edit?id=;删除 → t-dialog 确认 → removeDish → toast → 返回
+ * - 底部操作栏:编辑 → /packages/dish/edit?id=;删除 → 两层确认(t-dialog:删除确认 → 再次确认)→ removeDish → toast → 返回
  * - 图片预览:点击轮播 wx.previewImage
  * 数据库操作一律走 api/db.js,页面不直接调用 wx.cloud。
  */
@@ -25,7 +25,9 @@ Page({
     images: [], // 图片 fileID 数组(轮播数据)
     emoji: '🍜', // 无图时的分类占位 emoji(meal🍜 / drink🥤)
     ingredients: [], // 原料明细(含用量与调料标记)
-    deleteVisible: false, // 删除确认弹窗
+    deleteVisible: false, // 第一层删除确认弹窗
+    deleteReconfirmVisible: false, // 第二层「再次确认」弹窗(防误删,第一层确定后弹出)
+    deleteReconfirmBtn: { content: '删除', theme: 'danger' }, // 第二层确认按钮(danger 红色)
     deleting: false, // 删除进行中(防重复提交)
   },
 
@@ -95,20 +97,30 @@ Page({
     wx.navigateTo({ url: `/packages/dish/edit?id=${this.data.id}` });
   },
 
-  /** 底部「删除」:打开确认弹窗 */
+  /** 底部「删除」:打开第一层确认弹窗 */
   onDeleteTap() {
     this.setData({ deleteVisible: true });
   },
 
-  /** 删除弹窗取消 */
+  /** 第一层删除弹窗取消:直接关闭,安全返回 */
   onDeleteCancel() {
     this.setData({ deleteVisible: false });
   },
 
-  /** 删除弹窗确认:removeDish(内部先清理云存储图片,records 历史保留) */
-  async onDeleteConfirm() {
+  /** 第一层删除弹窗确认:关闭第一层,打开第二层「再次确认」(此时尚未执行删除) */
+  onDeleteConfirm() {
+    this.setData({ deleteVisible: false, deleteReconfirmVisible: true });
+  },
+
+  /** 第二层「再次确认」取消:直接关闭,安全返回 */
+  onDeleteReconfirmCancel() {
+    this.setData({ deleteReconfirmVisible: false });
+  },
+
+  /** 第二层「再次确认」确定:才真正执行 removeDish(内部先清理云存储图片,records 历史保留) */
+  async onDeleteReconfirmConfirm() {
     if (this.data.deleting) return;
-    this.setData({ deleting: true, deleteVisible: false });
+    this.setData({ deleting: true, deleteReconfirmVisible: false });
     try {
       await removeDish(this.data.id);
       this.onShowToast('#t-toast', '已删除');
