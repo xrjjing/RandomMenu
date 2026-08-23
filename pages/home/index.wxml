@@ -126,7 +126,8 @@
     <text wx:elif="{{!matchHasMore}}">没有更多了</text>
   </view>
 
-  <!-- 转盘入口按钮:候选为空(无匹配/无菜谱)时禁用置灰并提示;点击打开半屏转盘弹层 -->
+  <!-- 转盘入口按钮:fixed 悬浮于右下角(参照菜单页 ➕ 先例),不占文档流,
+       列表再长也不会被顶到页面底端被自定义 tabBar 盖住;候选为空时禁用置灰并提示 -->
   <view class="wheel-btn {{wheelDisabled ? 'wheel-btn-disabled' : ''}}" bind:tap="onWheelBtnTap">🎰 {{wheelDisabled ? '先选几道菜或添加菜谱' : '随机转盘'}}</view>
 
   <!-- 随机转盘半屏弹层:底部弹出,内嵌 spin-wheel 组件(items=当前候选) -->
@@ -135,10 +136,16 @@
     placement="bottom"
     bind:visible-change="onWheelVisibleChange"
   >
-    <view slot="content" class="wheel-popup">
+    <!-- 内容随 wheelVisible 整体销毁:popup 关闭做下滑动画期间,同层渲染的 type=2d canvas 在
+         macOS 工具上不跟随 transform,会原地悬浮残留 0.5-1s;关闭即销毁内容(canvas 瞬间消失),
+         popup 空壳照常播关闭动画;重新打开时组件重建 → ready → initCanvasWithRetry(F14 一次成功)
+         → items observer 重绘盘面,组件内部状态全重置无残留 -->
+    <view slot="content" class="wheel-popup" wx:if="{{wheelVisible}}">
       <view class="wheel-popup-header">
         <view class="wheel-popup-title">随机转盘</view>
         <view class="wheel-popup-count">候选 {{candidates.length}} 道，最多展示 12 道</view>
+        <!-- 标题栏关闭:与点遮罩关闭等价(回写 wheelVisible 才能真正关闭 popup) -->
+        <view class="wheel-popup-close" hover-class="wheel-popup-close-hover" bind:tap="closeWheel">✕</view>
       </view>
       <spin-wheel id="wheel" items="{{candidates}}" bind:spinstart="onSpinStart" bind:spinend="onSpinEnd" />
       <t-button block theme="primary" disabled="{{wheelSpinning}}" bind:tap="onStartSpin">
@@ -148,9 +155,12 @@
     </view>
   </t-popup>
 
-  <!-- 转盘结果弹层:「就吃它了」落账 /「换一个」重转;点遮罩可关闭回到转盘 -->
+  <!-- 转盘结果弹层:「就吃它了」落账 /「换一个」重转;点遮罩可关闭回到转盘
+       z-index 12000:dialog 内部也是 t-popup,默认层级与转盘 popup 同为 11500,
+       结果弹层会与转盘平叠(实测被转盘盖住看不见);显式抬高一层保证结果始终盖在转盘之上 -->
   <t-dialog
     visible="{{wheelResultVisible}}"
+    z-index="{{12000}}"
     title="今晚就吃"
     content="{{wheelResultText}}"
     confirm-btn="就吃它了"

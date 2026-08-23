@@ -1,6 +1,11 @@
 /* 首页样式
    设计基线:暖橙主色 #ff8c42、圆角卡片 .card、浅灰背景 #f5f6f7(见 app.less) */
 
+/* ---------- 页面容器:底部额外留白,避免固定转盘按钮盖住最后一张匹配卡 ---------- */
+.home-page {
+  padding-bottom: 240rpx;
+}
+
 /* ---------- 今日已定卡 ---------- */
 .today-card {
   margin-bottom: 20rpx;
@@ -313,14 +318,20 @@
   color: #999;
 }
 
-/* ---------- 转盘入口按钮:暖橙底白字;候选为空时置灰不可点 ---------- */
+/* ---------- 转盘入口按钮:fixed 悬浮右下角(参照菜单页 ➕ 先例),避开自定义 tabBar ---------- */
 .wheel-btn {
-  margin-top: 24rpx;
-  height: 96rpx;
+  position: fixed;
+  right: 32rpx;
+  /* 避让底部 tabBar(约 100rpx + 安全区),悬于列表之上 */
+  bottom: calc(200rpx + env(safe-area-inset-bottom));
+  /* 低于 popup/dialog 遮罩层级,保证弹层仍可正常点击 */
+  z-index: 50;
+  padding: 0 36rpx;
+  height: 88rpx;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 24rpx;
+  border-radius: 44rpx; /* 胶囊形 */
   font-size: 30rpx;
   font-weight: 500;
   background: #ff8c42;
@@ -340,10 +351,10 @@
   background: #fff;
 }
 
-/* 弹层头部:标题 + 候选数 */
+/* 弹层头部:标题 + 候选数 + 关闭按钮(垂直居中,关闭靠右) */
 .wheel-popup-header {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
   padding: 0 4rpx 8rpx;
 }
@@ -355,8 +366,27 @@
 }
 
 .wheel-popup-count {
+  flex: 1;
+  padding: 0 16rpx;
   font-size: 24rpx;
   color: #999;
+}
+
+/* 标题栏关闭按钮:暖橙 ×,点击区域放宽(≥80rpx 高,适配长辈) */
+.wheel-popup-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 80rpx;
+  height: 80rpx;
+  margin-right: -16rpx;
+  font-size: 36rpx;
+  color: #ff8c42;
+  border-radius: 16rpx;
+}
+
+.wheel-popup-close-hover {
+  background: #fff1e6;
 }
 
 /* 底部提示文案 */

@@ -16,21 +16,34 @@
   display: block;
 }
 
-/* 指针:正上方向下三角,主色填充,尖端指向盘面外缘 */
+/* 指针:正上方向下三角,外层白色 + 内层主色(白描边增强醒目度),尖端指向盘面外缘 */
 .wheel-pointer {
   position: absolute;
   top: -8rpx;
   left: 50%;
-  margin-left: -22rpx;
+  margin-left: -26rpx;
   width: 0;
   height: 0;
-  border-left: 22rpx solid transparent;
-  border-right: 22rpx solid transparent;
-  border-top: 36rpx solid #ff8c42;
+  border-left: 26rpx solid transparent;
+  border-right: 26rpx solid transparent;
+  border-top: 42rpx solid #fff;
   z-index: 3;
 }
 
-/* 中央圆钮「转」:白色圆底 + 主色描边,柔和阴影,点击可触发旋转 */
+/* 内层主色三角:比外层白三角小一圈,四周露出均匀白边 */
+.wheel-pointer::after {
+  content: '';
+  position: absolute;
+  top: 6rpx;
+  left: -20rpx;
+  width: 0;
+  height: 0;
+  border-left: 20rpx solid transparent;
+  border-right: 20rpx solid transparent;
+  border-top: 30rpx solid #ff8c42;
+}
+
+/* 中央圆钮「转」:主色径向渐变 + 白字 + 深色描边圈 + 外阴影,立体感强;点击可触发旋转 */
 .wheel-center {
   position: absolute;
   top: 50%;
@@ -39,14 +52,14 @@
   height: 108rpx;
   margin: -54rpx 0 0 -54rpx;
   border-radius: 50%;
-  background: #fff;
-  border: 6rpx solid #ff8c42;
-  color: #ff8c42;
-  font-size: 36rpx;
-  font-weight: 600;
+  background: radial-gradient(circle at 35% 30%, #ffa55c, #ff8c42 55%, #e06a1f);
+  border: 6rpx solid #d95f14;
+  color: #fff;
+  font-size: 40rpx;
+  font-weight: 700;
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 2;
-  box-shadow: 0 4rpx 16rpx rgba(0, 0, 0, 0.08);
+  box-shadow: 0 6rpx 20rpx rgba(224, 106, 31, 0.45), inset 0 2rpx 6rpx rgba(255, 255, 255, 0.35);
 }

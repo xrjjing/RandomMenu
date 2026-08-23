@@ -13,8 +13,9 @@
  *   - 未选原料但已选分类:listDishes 按分类浏览(新增 category 条件),触底翻页
  *   - 取消勾选全部原料后回到「未搜索」引导态
  * - 随机转盘:候选 = 当前匹配结果(未选原料时=全部菜品,点击时拉全量);半屏 t-popup 内嵌
- *   spin-wheel 组件,「开始旋转」调组件 spin()(旋转中按钮置灰);spinend → t-dialog 结果
- *   「今晚就吃:xxx」→「就吃它了」落账 /「换一个」重转
+ *   spin-wheel 组件,「开始旋转」调组件 spin()(旋转中按钮置灰);spinend 高亮停留 800ms
+ *   后先收转盘再弹结果(F17,绕开 dialog 与 popup 平叠 z-index 不生效问题),
+ *   「就吃它了」落账 /「换一个」关结果重开转盘再转
  * - onShow 静默刷新今日记录(tab 切回数据最新)
  * 数据库操作一律走 api/db.js 封装,页面不直接调用 wx.cloud。
  */
@@ -473,13 +474,21 @@ Page({
     return list;
   },
 
-  /** 弹层遮罩关闭:重置旋转与结果状态,避免状态残留 */
+  /** 弹层关闭(点遮罩/关闭按钮):重置旋转状态并回写 wheelVisible,避免状态残留。
+   *  t-popup 为受控组件,visible 必须回写 false 才能真正关闭;
+   *  结果弹窗生命周期独立于转盘(F17:先收转盘再弹结果),不随转盘关闭 */
   onWheelVisibleChange(e) {
     const detail = e.detail || {};
     const visible = typeof detail === 'boolean' ? detail : detail.visible;
     if (visible === false) {
-      this.setData({ wheelSpinning: false, wheelResultVisible: false });
+      this.setData({ wheelVisible: false, wheelSpinning: false });
     }
+  },
+
+  /** 顶部标题栏关闭按钮:与遮罩关闭等价,统一回写 wheelVisible 状态;
+   *  结果弹窗不随转盘关闭(转盘停转后才弹,与转盘显隐解耦) */
+  closeWheel() {
+    this.setData({ wheelVisible: false, wheelSpinning: false });
   },
 
   /** 「开始旋转」:调组件 spin();旋转状态由组件的 spinstart/spinend 事件维护 */
@@ -493,21 +502,27 @@ Page({
     this.setData({ wheelSpinning: true });
   },
 
-  /** 组件旋转结束:弹出结果弹层「今晚就吃:菜名」 */
+  /** 组件旋转结束:保存结果但不立即弹窗——高亮停留 800ms 让用户看清选中扇区,
+   *  再一并收起转盘 + 弹出结果。绕开 dialog 与 popup 平叠、z-index 在部分环境
+   *  不生效导致结果弹层被转盘盖住的问题(结果弹出时转盘已收,无遮挡)。
+   *  定时器无需存实例:800ms 内用户手动关转盘也无害,setData 幂等 */
   onSpinEnd(e) {
     const item = e.detail && e.detail.item;
     this.setData({
       wheelSpinning: false,
       wheelResultItem: item,
       wheelResultText: item ? `今晚就吃：${item.name}` : '',
-      wheelResultVisible: true,
     });
+    setTimeout(() => {
+      this.setData({ wheelVisible: false, wheelResultVisible: true });
+    }, 800);
   },
 
-  /** 结果确认「就吃它了」:关弹层 → 落账 → toast → 刷新今日卡 */
+  /** 结果确认「就吃它了」:关结果弹层 → 落账 → toast → 刷新今日卡
+   *  (转盘在停转时已收,无需再关 wheelVisible) */
   async onWheelConfirm() {
     const item = this.data.wheelResultItem;
-    this.setData({ wheelResultVisible: false, wheelVisible: false });
+    this.setData({ wheelResultVisible: false });
     if (!item) return;
     try {
       await addCookRecord(item.id);
@@ -519,14 +534,18 @@ Page({
     }
   },
 
-  /** 结果「换一个」:关结果弹层,重新旋转 */
+  /** 结果「换一个」:关结果弹层 → 重开转盘 → 等组件重建后自动开转。
+   *  转盘弹层内容由 wx:if 包裹,重开后 spin-wheel 销毁重建,
+   *  需等 ready + canvas 初始化完成后再调 spin(),不能直接复用旧实例 */
   onWheelAgain() {
-    this.setData({ wheelResultVisible: false });
-    const wheel = this.selectComponent('#wheel');
-    if (wheel) wheel.spin();
+    this.setData({ wheelResultVisible: false, wheelVisible: true });
+    setTimeout(() => {
+      const wheel = this.selectComponent('#wheel');
+      if (wheel && typeof wheel.spin === 'function') wheel.spin();
+    }, 400);
   },
 
-  /** 结果弹层点遮罩/关闭:仅关闭,保留转盘弹层可再转 */
+  /** 结果弹层点遮罩/关闭:仅关闭结果弹窗,不动转盘(此时转盘已收) */
   onWheelResultClose() {
     this.setData({ wheelResultVisible: false });
   },
