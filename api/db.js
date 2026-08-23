@@ -526,6 +526,38 @@ export async function checkDishName(name) {
   return res.data.length > 0;
 }
 
+/**
+ * 按菜名查询菜品文档(供内置数据增量同步等场景,需要拿到文档而不仅是存在性)。
+ * @param {string} name 菜名
+ * @returns {Promise<object|null>} 菜品文档;不存在返回 null
+ */
+export async function getDishByName(name) {
+  const normalized = normalizeName(name);
+  if (!normalized) return null;
+  const db = wx.cloud.database();
+  const res = await db.collection('dishes').where({ name: normalized }).limit(1).get();
+  return res.data.length ? res.data[0] : null;
+}
+
+/**
+ * 仅更新菜品 images 字段(内置数据增量同步补图等场景,不触碰其他字段)。
+ * 写库后 markDirty 清缓存;skipSync 时跳过重拉回填(批量导入期间避免逐条拉全量)。
+ * @param {string} id 菜品 _id
+ * @param {string[]} images 新图片数组
+ * @param {object} [opts]
+ * @param {boolean} [opts.skipSync=false] 批量导入场景跳过写后重拉回填(仅 markDirty 清缓存)
+ * @returns {Promise<void>}
+ */
+export async function updateDishImages(id, images, { skipSync = false } = {}) {
+  const db = wx.cloud.database();
+  const _ = db.command;
+  await db.collection('dishes').doc(id).update({
+    data: { images: _.set(images || []) },
+  });
+  markDirty(['dishes']);
+  if (!skipSync) await refreshCollection('dishes', fetchAllDishes);
+}
+
 /* ---------------- records 数据层 ---------------- */
 
 /**

@@ -6,7 +6,8 @@
  * 页面只 import 本模块,不直接调用 wx.cloud。
  */
 import builtinData from '../data/builtin-dishes.js';
-import { checkDishName, ensureIngredient, listDishes, listIngredients, saveDish } from './db.js';
+import builtinImages from '../data/builtin-images.js';
+import { ensureIngredient, getDishByName, listDishes, listIngredients, saveDish, updateDishImages } from './db.js';
 import { normalizeName } from '../utils/normalize.js';
 
 /**
@@ -79,8 +80,16 @@ export async function importBuiltinData({ reimport = true, onProgress } = {}) {
   const failed = [];
   for (const dish of builtinData.dishes) {
     try {
-      const exists = await checkDishName(dish.name);
+      const exists = await getDishByName(dish.name);
       if (exists) {
+        // 增量同步内置图:已存在文档无图且内置图映射存在 → _.set 补充首图(不覆盖用户已上传图)
+        if (
+          exists.isBuiltin &&
+          !(exists.images && exists.images.length) &&
+          builtinImages[dish.name]
+        ) {
+          await updateDishImages(exists._id, [builtinImages[dish.name]], { skipSync: true });
+        }
         skippedDishes += 1;
         done += 1;
         if (typeof onProgress === 'function') onProgress(done, total);
@@ -94,7 +103,7 @@ export async function importBuiltinData({ reimport = true, onProgress } = {}) {
           cookTime: dish.cookTime,
           difficulty: dish.difficulty,
           steps: dish.steps,
-          images: [], // 内置菜首版不带图,列表/详情展示时回退到分类 emoji 占位
+          images: [builtinImages[dish.name] || ''], // 内置菜挂载本地静态首图(映射 80/80 全命中,|| '' 仅兜底)
           ingredients: dish.ingredients.map((ing) => {
             const res = { name: ing.name, amount: ing.amount, isSeasoning: ing.isSeasoning };
             // 原料阶段已确保存在,直接传 id 让 saveDish 跳过重复查询;查不到时缺省走 ensure 兜底

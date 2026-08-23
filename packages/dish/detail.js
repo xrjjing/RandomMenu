@@ -13,6 +13,7 @@
 import useToastBehavior from '../../behaviors/useToast.js';
 import { getDish, removeDish } from '../../api/db.js';
 import { SEASONING_SET } from '../../utils/seasonings.js';
+import { orderDishImages } from '../../utils/image.js';
 
 Page({
   behaviors: [useToastBehavior],
@@ -51,8 +52,8 @@ Page({
     if (!silent) this.setData({ loading: true });
     try {
       const dish = await getDish(this.data.id);
-      // 图片:有云端 fileID 直接渲染;无图时轮播区显示分类 emoji 占位
-      const images = dish.images || [];
+      // 图片:云端 fileID 在前、内置静态图在后(置顶判断,用户上传图不被内置占位图顶掉),空值剔除
+      const images = orderDishImages(dish.images);
       // 原料明细兜底:老数据可能只有 ingredientNames 无用量明细
       const ingredients =
         dish.ingredients && dish.ingredients.length

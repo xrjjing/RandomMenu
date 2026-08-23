@@ -14,7 +14,7 @@
 import useToastBehavior from '../../behaviors/useToast.js';
 import { listDishes, DISH_CARD_FIELDS } from '../../api/db.js';
 import { sortMenuDishes } from '../../utils/menuSort.js';
-import { isCloudFileId } from '../../utils/image.js';
+import { orderDishImages } from '../../utils/image.js';
 
 /** 每页条数(与云数据库客户端单次 limit 上限一致) */
 const PAGE_SIZE = 20;
@@ -190,13 +190,12 @@ Page({
     }
   },
 
-  /** 把菜品文档组装为展示卡片:封面(云端第一张图,无则分类 emoji)、原料标签、徽章、内置角标 */
+  /** 把菜品文档组装为展示卡片:封面(云端第一张图 → 内置静态图 → 分类 emoji)、原料标签、徽章、内置角标 */
   buildCards(dishes) {
     return dishes.map((dish) => {
       const names = dish.ingredientNames || [];
-      const images = dish.images || [];
-      // 封面:有云端 images 用第一张;无云端图 → 分类 emoji 占位
-      const cover = images.find(isCloudFileId) || '';
+      // 封面优先级:云端第一张图(排序后数组首位)→ 内置静态图(seed 已写入 images)→ 分类 emoji 占位
+      const cover = orderDishImages(dish.images)[0] || '';
       const hasCover = !!cover;
       return {
         _id: dish._id,
