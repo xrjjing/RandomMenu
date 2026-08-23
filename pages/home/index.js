@@ -30,6 +30,7 @@ import {
   DISH_CARD_FIELDS,
 } from '../../api/db.js';
 import { SEASONING_SET } from '../../utils/seasonings.js';
+import { orderDishImages } from '../../utils/image.js';
 
 /** 每页条数(与云数据库客户端单次 limit 上限一致) */
 const PAGE_SIZE = 20;
@@ -346,7 +347,9 @@ Page({
   buildMatchCards(dishes, withScore) {
     return dishes.map((dish) => {
       const names = dish.ingredientNames || [];
-      const hasCover = !!(dish.images && dish.images.length);
+      // 封面优先级:云端第一张图(排序后数组首位)→ 内置静态图(seed 已写入 images)→ 分类 emoji 占位
+      const cover = orderDishImages(dish.images)[0] || '';
+      const hasCover = !!cover;
       let score = '';
       if (withScore) {
         // partial 模式 matchScore(0-1)取整百分比;complete 模式全部完全匹配显示 100%
@@ -356,7 +359,7 @@ Page({
       return {
         _id: dish._id,
         name: dish.name,
-        cover: hasCover ? dish.images[0] : '',
+        cover,
         emoji: hasCover ? '' : dish.category === 'drink' ? '🥤' : '🍜',
         ingredientTags: names.slice(0, 4),
         extraCount: names.length > 4 ? names.length - 4 : 0,

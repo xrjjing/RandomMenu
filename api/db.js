@@ -21,6 +21,7 @@ const CACHE_TTL = { LIST: 30 * 1000 };
 
 /** 卡片流列表查询字段投影(不含 steps/ingredients 等大字段,减小列表查询载荷) */
 export const DISH_CARD_FIELDS = [
+  '_id', // 详情跳转与落账都需要菜品 id,投影里必须包含
   'name',
   'category',
   'tags',
@@ -574,6 +575,16 @@ export function dateKey(d = new Date()) {
 }
 
 /**
+ * 内部:清理除 keepDate 外的所有历史 records 缓存键(存储泄漏防护)。
+ * records:${date} 每天一个新键写入 wx.Storage,历史日期键永不读、永不删;
+ * 操作某天 records 时顺手清掉其他天的死键(keepDate 当天保留)。
+ * @param {string} keepDate 需保留的日期键 YYYY-MM-DD
+ */
+function purgeStaleRecordCaches(keepDate) {
+  storageCache.removeByPrefix('rmdc_records:', storageCache.cacheKey(`records:${keepDate}`));
+}
+
+/**
  * 做菜落账:读取菜品快照后写一条 records(只增不改,菜品删除后历史记录仍可读)。
  * ingredientNames 取非调料原料名列表(快照,统计模块原料 +1 的来源)。
  * @param {string} dishId 菜品 _id
@@ -598,8 +609,9 @@ export async function addCookRecord(dishId) {
     createdAt: db.serverDate(),
   };
   const added = await db.collection('records').add({ data: doc });
-  // 写库后同步三层:今日记录缓存失效并重拉回填 L2
+  // 写库后同步三层:今日记录缓存失效并重拉回填 L2;顺手清理其他日期的死缓存键
   markDirty([`records:${doc.date}`]);
+  purgeStaleRecordCaches(doc.date);
   await refreshCollection(`records:${doc.date}`, () => fetchAll('records', { date: doc.date }));
   return { _id: added._id, ...doc };
 }
@@ -612,6 +624,8 @@ export async function addCookRecord(dishId) {
  */
 export async function todayRecords(date = dateKey()) {
   const list = await loadCollection(`records:${date}`, () => fetchAll('records', { date }));
+  // 读取某天记录时顺手清理其他日期的死缓存键(存储泄漏防护)
+  purgeStaleRecordCaches(date);
   return list.slice().sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 }
 

@@ -145,3 +145,38 @@ test('storageCache: get 返回数组浅拷贝,修改返回结果不污染持久�
   assert.equal(second.length, 1);
   assert.equal(second[0].name, '菜一');
 });
+
+test('storageCache: removeByPrefix 删除匹配前缀键,exceptKey 保留', () => {
+  const mem = setupMockStorage();
+  storageCache.set('records:2026-08-20', [{ _id: 'r1' }]);
+  storageCache.set('records:2026-08-21', [{ _id: 'r2' }]);
+  storageCache.set('records:2026-08-22', [{ _id: 'r3' }]);
+  storageCache.set('dishes', [{ _id: 'd1' }]);
+  storageCache.removeByPrefix('rmdc_records:', storageCache.cacheKey('records:2026-08-21'));
+  assert.equal(storageCache.get('records:2026-08-20'), undefined);
+  assert.deepEqual(storageCache.get('records:2026-08-21'), [{ _id: 'r2' }], 'exceptKey 应保留');
+  assert.equal(storageCache.get('records:2026-08-22'), undefined);
+  assert.ok(mem.has('rmdc_dishes'), '非 records 前缀键不应被清除');
+});
+
+test('storageCache: removeByPrefix 无匹配键时静默成功不抛错', () => {
+  const mem = setupMockStorage();
+  storageCache.set('dishes', [{ _id: 'd1' }]);
+  storageCache.removeByPrefix('rmdc_records:', 'rmdc_records:2026-08-21');
+  assert.ok(mem.has('rmdc_dishes'), '无匹配时不应误删其他键');
+});
+
+test('storageCache: removeByPrefix 遍历异常时静默降级不抛错', () => {
+  const mem = new Map();
+  global.wx = {
+    setStorageSync: (k, v) => mem.set(k, v),
+    getStorageSync: (k) => (mem.has(k) ? mem.get(k) : ''),
+    removeStorageSync: (k) => mem.delete(k),
+    getStorageInfoSync() {
+      throw new Error('storage info failed');
+    },
+  };
+  silenceConsoleError(() => {
+    storageCache.removeByPrefix('rmdc_records:', 'rmdc_records:2026-08-21');
+  });
+});

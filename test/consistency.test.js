@@ -3,14 +3,13 @@
  * 三层缓存一致性验收(node --test)
  * 运行:node --test
  * 覆盖:写后同步三层(saveDish 新增 → listDishes 立即可见)、删除同步、L2 回填与命中不再打库、
- *      初始化卫士(reimport=false 库已有数据抛「库中已有」)、ensureIngredient 独立同步
+ *      ensureIngredient 独立同步
  * 说明:api/db.js 内部仅在函数内引用 wx,node 下以 global.wx 替身(mock wx.cloud 数据库 + wx.Storage)
  *      wiring 被测模块,断言真实缓存行为。
  */
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const db = require('../api/db.js');
-const seed = require('../api/seed.js');
 const storageCache = require('../utils/storageCache.js');
 const { queryCache } = require('../utils/queryCache.js');
 
@@ -273,32 +272,4 @@ test('一致性:ensureIngredient 独立调用后 listIngredients 立即可见(L2
   assert.ok(cached.some((d) => d.name === '紫苏'));
 });
 
-test('初始化卫士:库已有数据时 reimport=false 抛错含「库中已有」', async () => {
-  freshEnv({
-    dishes: [
-      {
-        _id: 'd1',
-        name: '已有菜',
-        category: 'meal',
-        tags: [],
-        steps: [],
-        ingredientNames: [],
-        updatedAt: new Date(2026, 7, 23),
-      },
-    ],
-  });
-  await assert.rejects(
-    () => seed.importBuiltinData({ reimport: false }),
-    (err) => err.message.includes('库中已有'),
-  );
-});
 
-test('初始化卫士:库空时 reimport=false 正常导入,不误伤首次初始化', async () => {
-  freshEnv();
-  const res = await seed.importBuiltinData({ reimport: false });
-  assert.equal(res.skipped, false);
-  assert.equal(res.importedDishes, 80);
-  // 导入完成后读取立即可见(库有 80 道)
-  const dishes = await db.listDishes({});
-  assert.equal(dishes.total, 80);
-});

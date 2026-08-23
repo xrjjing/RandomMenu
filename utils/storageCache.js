@@ -65,6 +65,24 @@ export function remove(key) {
 }
 
 /**
+ * 按前缀批量删除缓存键(存储泄漏防护:如历史日期的 records 键)。
+ * 与 clearAll 相同的 getStorageInfoSync 遍历写法;exceptKey 为需保留的完整键(带 rmdc_ 前缀)。
+ * @param {string} prefix 完整键前缀(带 rmdc_ 前缀,如 'rmdc_records:')
+ * @param {string} exceptKey 需保留的完整 storage 键(带 rmdc_ 前缀)
+ */
+export function removeByPrefix(prefix, exceptKey) {
+  try {
+    const info = wx.getStorageInfoSync();
+    const keys = (info && info.keys) || [];
+    keys.forEach((k) => {
+      if (k.startsWith(prefix) && k !== exceptKey) wx.removeStorageSync(k);
+    });
+  } catch (err) {
+    console.error('[storageCache] removeByPrefix 失败(静默降级)', err);
+  }
+}
+
+/**
  * 清空所有 rmdc_ 前缀缓存(内嵌前缀匹配,不动用户其他键)。
  */
 export function clearAll() {

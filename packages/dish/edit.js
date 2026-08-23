@@ -31,7 +31,7 @@ const COMMON_TAGS = [
 const COOK_TIME_OPTIONS = ['10分钟', '15分钟', '20分钟', '30分钟', '45分钟', '60分钟'];
 
 /** 难度选项 */
-const DIFFICULTY_OPTIONS = ['简单', '一般', '复杂'];
+const DIFFICULTY_OPTIONS = ['简单', '中等', '较难'];
 
 Page({
   behaviors: [useToastBehavior],
@@ -46,7 +46,7 @@ Page({
     selectedTags: [], // 已选细分标签
     customTag: '', // 自定义标签输入
     cookTime: '', // 烹饪时间(如 10分钟)
-    difficulty: '', // 难度(简单/一般/复杂)
+    difficulty: '', // 难度(简单/中等/较难)
     cookTimeVisible: false, // 烹饪时间选择器
     difficultyVisible: false, // 难度选择器
     cookTimeOptions: COOK_TIME_OPTIONS.map((v) => ({ label: v, value: v })),

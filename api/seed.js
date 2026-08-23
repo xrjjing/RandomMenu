@@ -7,7 +7,8 @@
  */
 import builtinData from '../data/builtin-dishes.js';
 import builtinImages from '../data/builtin-images.js';
-import { ensureIngredient, getDishByName, listDishes, listIngredients, saveDish, updateDishImages } from './db.js';
+import { ensureIngredient, getDishByName, saveDish, updateDishImages } from './db.js';
+import { loadBuiltinImageMap } from './upload.js';
 import { normalizeName } from '../utils/normalize.js';
 
 /**
@@ -23,23 +24,17 @@ function isDuplicateLockError(err) {
 /**
  * 导入内置菜谱与原料(幂等,可重复点击续传)。
  * @param {object} [opts]
- * @param {boolean} [opts.reimport=true] true=锁已存在时仍继续增量导入(按菜名跳过已存在,只补缺失)
  * @param {Function} [opts.onProgress] 每处理完一道菜回调 onProgress(done, total);done=成功+跳过+失败
- * @returns {Promise<{skipped: boolean, importedDishes: number, importedIngredients: number, skippedDishes: number, failed: string[], total: number}>}
- *   skipped=true 表示锁已存在且未要求重新导入,直接跳过
+ * @returns {Promise<{importedDishes: number, importedIngredients: number, skippedDishes: number, failed: string[], total: number}>}
  *   failed 为单道菜导入失败的菜名列表(不中断整体,可再次点击补导)
  */
-export async function importBuiltinData({ reimport = true, onProgress } = {}) {
+export async function importBuiltinData({ onProgress } = {}) {
+  // 0. 内置图映射:云映射优先(已上云则挂 cloud:// fileID,主包瘦身),本地静态路径兜底。
+  //    loadBuiltinImageMap 云库不可达时返回 null,自动回退本地映射,不阻断导入
+  const cloudMap = await loadBuiltinImageMap();
+  const imageMap = cloudMap || builtinImages;
+
   const db = wx.cloud.database();
-  // 前置卫士:非重导入模式先检查库是否已有数据,防止误初始化覆盖用户数据。
-  // 任一非空即抛错(含中文语义),引导用户先去更多页清空或改用增量补导。
-  if (!reimport) {
-    const dishesRes = await listDishes({ pageSize: 1 });
-    const ingredients = await listIngredients();
-    if (dishesRes.total > 0 || ingredients.length > 0) {
-      throw new Error('库中已有菜品/原料，禁止初始化导入。请先去更多页清空，或改用增量补导');
-    }
-  }
   // 1. 抢锁:add 成功=首次导入;add 冲突=已有人导入过
   try {
     await db.collection('app_meta').add({
@@ -47,17 +42,7 @@ export async function importBuiltinData({ reimport = true, onProgress } = {}) {
     });
   } catch (err) {
     if (!isDuplicateLockError(err)) throw err; // 网络等其他错误,交给调用方提示重试
-    if (!reimport) {
-      return {
-        skipped: true,
-        importedDishes: 0,
-        importedIngredients: 0,
-        skippedDishes: 0,
-        failed: [],
-        total: builtinData.dishes.length,
-      };
-    }
-    // reimport 模式:锁已存在,继续增量导入,只补缺失、不重复、不覆盖用户改动
+    // 锁已存在:继续增量导入,只补缺失、不重复、不覆盖用户改动
   }
 
   // 2. 原料:逐个 ensure(带调料标记)并建 name → _id Map;
@@ -78,17 +63,24 @@ export async function importBuiltinData({ reimport = true, onProgress } = {}) {
   let skippedDishes = 0;
   let done = 0;
   const failed = [];
+  // 内置图映射的全部有效值(循环外提取一次,避免每道菜重复 Object.values)
+  const imageValues = Object.values(imageMap);
   for (const dish of builtinData.dishes) {
     try {
       const exists = await getDishByName(dish.name);
       if (exists) {
-        // 增量同步内置图:已存在文档无图且内置图映射存在 → _.set 补充首图(不覆盖用户已上传图)
-        if (
-          exists.isBuiltin &&
-          !(exists.images && exists.images.length) &&
-          builtinImages[dish.name]
-        ) {
-          await updateDishImages(exists._id, [builtinImages[dish.name]], { skipSync: true });
+        // 增量同步内置图:内置菜且映射存在时,按当前 images 判断是否需要补图——
+        // 有用户云图(cloud:// fileID)或当前映射有效值则不动;
+        // 否则(旧失效路径 / 空串 / 无图)替换为内置图(imageMap 云 fileID 优先,本地静态路径兜底)。
+        // 注意云图判断用 cloud:// 前缀而非 isCloudFileId:isCloudFileId 只排除 /static/ 前缀,
+        // 会把旧 Unsplash HTTP 路径误判为云图,导致失效旧路径永远补不上。
+        if (exists.isBuiltin && imageMap[dish.name]) {
+          const validImages = (exists.images || []).filter(Boolean);
+          const hasCloud = validImages.some((p) => p.indexOf('cloud://') === 0);
+          const hasValidImage = validImages.some((p) => imageValues.includes(p));
+          if (!hasCloud && !hasValidImage) {
+            await updateDishImages(exists._id, [imageMap[dish.name]], { skipSync: true });
+          }
         }
         skippedDishes += 1;
         done += 1;
@@ -103,7 +95,7 @@ export async function importBuiltinData({ reimport = true, onProgress } = {}) {
           cookTime: dish.cookTime,
           difficulty: dish.difficulty,
           steps: dish.steps,
-          images: [builtinImages[dish.name] || ''], // 内置菜挂载本地静态首图(映射 80/80 全命中,|| '' 仅兜底)
+          images: imageMap[dish.name] ? [imageMap[dish.name]] : [], // 内置菜挂载内置图(映射缺失时存空数组而非 [''])
           ingredients: dish.ingredients.map((ing) => {
             const res = { name: ing.name, amount: ing.amount, isSeasoning: ing.isSeasoning };
             // 原料阶段已确保存在,直接传 id 让 saveDish 跳过重复查询;查不到时缺省走 ensure 兜底
@@ -125,5 +117,5 @@ export async function importBuiltinData({ reimport = true, onProgress } = {}) {
     if (typeof onProgress === 'function') onProgress(done, total);
   }
 
-  return { skipped: false, importedDishes, importedIngredients, skippedDishes, failed, total };
+  return { importedDishes, importedIngredients, skippedDishes, failed, total };
 }
