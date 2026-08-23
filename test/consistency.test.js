@@ -60,7 +60,7 @@ function setupMockWx(initialData = {}) {
   for (const [name, docs] of Object.entries(initialData)) {
     collections[name] = new Map(docs.map((d) => [d._id, JSON.parse(JSON.stringify(d))]));
   }
-  const counters = { reads: 0, addCount: 0 };
+  const counters = { reads: 0, addCount: 0, deletedFileList: [] };
   let idSeq = 1;
   // serverDate 递增:保证 orderBy createdAt 倒序可稳定断言
   const serverDate = () => new Date(2026, 7, 23, 12, 0, idSeq);
@@ -170,7 +170,11 @@ function setupMockWx(initialData = {}) {
           RegExp: (opts) => ({ $regexp: opts.regexp, $options: opts.options }),
         };
       },
-      deleteFile: async ({ fileList }) => ({ fileList, deleted: fileList.length }),
+      deleteFile: async ({ fileList }) => {
+        // 记录每次删除的 fileID,供断言「内置公共图不被删」
+        counters.deletedFileList.push(...(fileList || []));
+        return { fileList, deleted: fileList.length };
+      },
     },
   };
   return { counters };
@@ -238,6 +242,37 @@ test('一致性:removeDish 后 L2 缓存同步为最新(不含被删菜)', async
   const cached = storageCache.get('dishes');
   assert.ok(Array.isArray(cached));
   assert.equal(cached.some((d) => d._id === saved._id), false);
+});
+
+test('一致性:removeDish 只删用户云图,内置公共图(映射内)保留', async () => {
+  const builtinFileId = 'cloud://builtin/红烧肉.jpg';
+  const userFileId = 'cloud://user/upload-1.jpg';
+  const mock = freshEnv({
+    // 注入 app_meta builtin_images 映射(与真实环境一致:内置图公共资产挂在映射上)
+    app_meta: [{ _id: 'builtin_images', map: { 红烧肉: builtinFileId } }],
+  });
+  const saved = await db.saveDish({
+    name: '红烧肉',
+    category: 'meal',
+    isBuiltin: true,
+    images: [builtinFileId, userFileId],
+  });
+  await db.removeDish(saved._id);
+  // 只把用户上传的云图传给 deleteFile,内置公共图(映射值)不被删除
+  assert.deepEqual(mock.counters.deletedFileList, [userFileId]);
+});
+
+test('一致性:removeDish 无内置图映射(loadBuiltinImageMap 返回 null)时降级全删云图', async () => {
+  const mock = freshEnv(); // 无 app_meta 文档 → loadBuiltinImageMap try/catch 返回 null
+  const saved = await db.saveDish({
+    name: '红烧肉',
+    category: 'meal',
+    isBuiltin: true,
+    images: ['cloud://builtin/红烧肉.jpg'],
+  });
+  await db.removeDish(saved._id);
+  // 保守降级:拿不到映射时按原逻辑全删,保证删菜功能不被云库抖动阻断
+  assert.deepEqual(mock.counters.deletedFileList, ['cloud://builtin/红烧肉.jpg']);
 });
 
 test('一致性:addCookRecord 后 todayRecords 立即可见,L2 已回填', async () => {

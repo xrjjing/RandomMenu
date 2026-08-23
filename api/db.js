@@ -12,6 +12,8 @@ import { SEASONING_SET } from '../utils/seasonings.js';
 import { queryCache } from '../utils/queryCache.js';
 import { isCloudFileId } from '../utils/image.js';
 import * as storageCache from '../utils/storageCache.js';
+// 单向依赖:upload.js 只 import data/builtin-dishes.js,不依赖本模块,无循环引用(seed.js 已同款并存)
+import { loadBuiltinImageMap } from './upload.js';
 
 /** 小程序端单次查询上限(客户端 limit 最大 20,超出需 skip 分页) */
 const PAGE_SIZE = 20;
@@ -503,8 +505,16 @@ export async function removeDish(id) {
   const db = wx.cloud.database();
   const doc = await db.collection('dishes').doc(id).get();
   const dish = doc.data;
-  // 只清理云存储 fileID(非云路径一律过滤,避免 deleteFile 收到非法 fileID 报错)
-  const images = (dish.images || []).filter(isCloudFileId);
+  // 内置公共图(cloud://builtin/…)生命周期跟随 app_meta builtin_images 映射,而非单道菜:
+  // 删菜时若一并删除会留下映射死链,重导该菜时封面空白,因此必须保留内置公共图。
+  // loadBuiltinImageMap 读取失败返回 null,此时视为无内置图,按原逻辑全删云图(保守降级,
+  // 保证删菜功能不被云库抖动阻断)。
+  const builtinMap = await loadBuiltinImageMap();
+  const builtinValues = builtinMap ? Object.values(builtinMap) : [];
+  // 只清理用户上传的云图 fileID(非云路径 + 内置公共图一律过滤,避免 deleteFile 收到非法 fileID 报错)
+  const images = (dish.images || [])
+    .filter(isCloudFileId)
+    .filter((id) => !builtinValues.includes(id));
   if (images.length > 0) {
     await wx.cloud.deleteFile({ fileList: images });
   }
