@@ -10,13 +10,10 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const upload = require('../api/upload.js');
-const builtinImages = require('../data/builtin-images.js').default;
+const builtinData = require('../data/builtin-dishes.js').default;
 
-/** 本地映射路径取扩展名(与 api/upload.js getExt 语义一致,用于构造 cloudPath 断言) */
-function extOf(name) {
-  const match = builtinImages[name].match(/\.([a-z0-9]+)$/i);
-  return match ? match[1] : 'jpg';
-}
+/** 内置图菜名清单(与 api/upload.js BUILTIN_IMAGE_NAMES 同源;本地源已移除,扩展名恒为 jpg) */
+const BUILTIN_IMAGE_NAMES = builtinData.dishes.map((dish) => dish.name);
 
 /**
  * 构造 wx 替身:mock app_meta 集合(doc get/update + add)与 wx.cloud.uploadFile。
@@ -92,8 +89,8 @@ function setupMockWx({ appMetaDocs = [], failUploads = new Set() } = {}) {
 test('upload:isBuiltinImageMapComplete 完整性判断(纯函数)', () => {
   assert.equal(upload.isBuiltinImageMapComplete(null), false);
   assert.equal(upload.isBuiltinImageMapComplete({}), false);
-  const names = Object.keys(builtinImages);
-  assert.equal(names.length, 80, '内置图映射应覆盖全部 80 道菜');
+  const names = BUILTIN_IMAGE_NAMES;
+  assert.equal(names.length, 80, '内置菜名清单应覆盖全部 80 道菜');
   const full = Object.fromEntries(names.map((n) => [n, 'cloud://builtin/x.jpg']));
   assert.equal(upload.isBuiltinImageMapComplete(full), true);
   const partial = { ...full };
@@ -126,10 +123,10 @@ test('upload:uploadBuiltinImages 无记录全量上传并写回 app_meta', async
   assert.equal(res.uploaded, 80);
   assert.deepEqual(res.failed, []);
   assert.equal(calls.uploads.length, 80);
-  // cloudPath 全部符合 builtin/{菜名}.{扩展名},filePath 用包内静态路径
-  calls.uploads.forEach(({ cloudPath, filePath }) => {
+  // cloudPath 全部符合 builtin/{菜名}.jpg(本地源已移除,无扩展名可识别,恒为 jpg)
+  calls.uploads.forEach(({ cloudPath }) => {
     assert.ok(cloudPath.startsWith('builtin/'), cloudPath);
-    assert.ok(filePath.startsWith('/static/images/'), filePath);
+    assert.ok(cloudPath.endsWith('.jpg'), cloudPath);
   });
   // onProgress 逐张回调,最后进度 = 总数
   assert.equal(progress.length, 80);
@@ -142,7 +139,7 @@ test('upload:uploadBuiltinImages 无记录全量上传并写回 app_meta', async
 });
 
 test('upload:uploadBuiltinImages 已完整上云直接返回,不重复上传', async () => {
-  const fullMap = Object.fromEntries(Object.keys(builtinImages).map((n) => [n, 'cloud://builtin/x.jpg']));
+  const fullMap = Object.fromEntries(BUILTIN_IMAGE_NAMES.map((n) => [n, 'cloud://builtin/x.jpg']));
   const { calls } = setupMockWx({ appMetaDocs: [{ _id: 'builtin_images', map: fullMap }] });
   const res = await upload.uploadBuiltinImages({});
   assert.deepEqual(res, { alreadyDone: true, uploaded: 0, failed: [] });
@@ -150,7 +147,7 @@ test('upload:uploadBuiltinImages 已完整上云直接返回,不重复上传', a
 });
 
 test('upload:uploadBuiltinImages 部分已上云只补缺失,并合并写回', async () => {
-  const names = Object.keys(builtinImages);
+  const names = BUILTIN_IMAGE_NAMES;
   const partialMap = {
     [names[0]]: 'cloud://builtin/existing.jpg',
     [names[1]]: 'cloud://builtin/existing2.jpg',
@@ -167,13 +164,13 @@ test('upload:uploadBuiltinImages 部分已上云只补缺失,并合并写回', a
   const meta = appMeta.get('builtin_images');
   assert.equal(Object.keys(meta.map).length, 80);
   assert.equal(meta.map[names[0]], 'cloud://builtin/existing.jpg');
-  assert.equal(meta.map[names[2]], `cloud://builtin/${names[2]}.${extOf(names[2])}`);
+  assert.equal(meta.map[names[2]], `cloud://builtin/${names[2]}.jpg`);
 });
 
 test('upload:uploadBuiltinImages 单张失败不中断,收集菜名,重试只补缺失', async () => {
-  const names = Object.keys(builtinImages);
+  const names = BUILTIN_IMAGE_NAMES;
   const failName = names[0];
-  const failPath = `builtin/${failName}.${extOf(failName)}`;
+  const failPath = `builtin/${failName}.jpg`;
   const failSet = new Set([failPath]);
   const { calls, appMeta } = setupMockWx({ failUploads: failSet });
   const res = await upload.uploadBuiltinImages({});
@@ -190,5 +187,5 @@ test('upload:uploadBuiltinImages 单张失败不中断,收集菜名,重试只补
   assert.equal(retry.alreadyDone, false);
   assert.equal(retry.uploaded, 1);
   assert.deepEqual(retry.failed, []);
-  assert.equal(appMeta.get('builtin_images').map[failName], `cloud://builtin/${failName}.${extOf(failName)}`);
+  assert.equal(appMeta.get('builtin_images').map[failName], `cloud://builtin/${failName}.jpg`);
 });

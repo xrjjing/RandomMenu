@@ -4,7 +4,10 @@
  * 页面只 import 本模块操作云存储,不直接碰 wx.cloud。
  * 注意:wx 引用一律放在函数内部,保证在 node 环境下 import 本文件不抛错。
  */
-import builtinImages from '../data/builtin-images.js';
+import builtinData from '../data/builtin-dishes.js';
+
+/** 内置图菜名清单(云映射的键基准;主包瘦身后本地源已移除,菜名唯一来自内置数据) */
+const BUILTIN_IMAGE_NAMES = builtinData.dishes.map((dish) => dish.name);
 
 /** 内置图上传并发批次大小(每批同时上传 5 张,避免瞬时并发过高) */
 const UPLOAD_BATCH_SIZE = 5;
@@ -156,14 +159,14 @@ export async function deleteImages(fileIds) {
 /* ---------------- 内置图批量上云(方案 A,主包瘦身) ---------------- */
 
 /**
- * 判断云映射是否已覆盖全部内置菜(builtin-images.js 全部键且值非空)。
+ * 判断云映射是否已覆盖全部内置菜(builtin-dishes.js 全部菜名且值非空)。
  * 纯函数:预检「已上云」与重试时判断还缺哪些菜。
  * @param {object|null} map app_meta builtin_images 文档的 map(菜名→fileID);null=无记录
  * @returns {boolean} 已完整覆盖返回 true
  */
 export function isBuiltinImageMapComplete(map) {
   if (!map || typeof map !== 'object') return false;
-  return Object.keys(builtinImages).every((name) => !!map[name]);
+  return BUILTIN_IMAGE_NAMES.every((name) => !!map[name]);
 }
 
 /**
@@ -185,8 +188,11 @@ export async function loadBuiltinImageMap() {
 
 /**
  * 上传全部内置菜图片到云存储(一次性,主包瘦身;库中旧菜的 images 由 seed 增量补图自动替换成云 fileID)。
- * 流程:预检 app_meta 云映射——已完整覆盖 80 道菜直接返回(不重复上传、不报错);
- * 缺失的菜名才上传,cloudPath 为 builtin/{菜名}.{扩展名},filePath 直接用包内 /static/images 路径;
+ * ⚠️ 本地静态源已移除(主包瘦身,static/images 已删):云映射不完整时,本函数的上传分支会失败,
+ *    需将原图放回 static/images 并恢复 data/builtin-images.js 映射后重试;预检已完整时照常返回
+ *    alreadyDone,这是正常主路径(不触发上传)。
+ * 流程:预检 app_meta 云映射——已完整覆盖全部内置菜直接返回(不重复上传、不报错);
+ * 缺失的菜名才尝试上传,cloudPath 为 builtin/{菜名}.jpg(无本地源可识别扩展名,默认 jpg);
  * 并发分批(每批 5 张),单张失败不中断(收集菜名,可再次点击重试只补缺失);
  * 全部完成后写回 app_meta:无记录用 add 带 _id(与 seed_lock 同款),已有部分记录用 doc update _.set 合并全量 map。
  * @param {object} [opts]
@@ -195,13 +201,13 @@ export async function loadBuiltinImageMap() {
  *   alreadyDone=true 表示已完整上云(本次未上传);uploaded 为本次新上传张数;failed 为上传失败的菜名列表
  */
 export async function uploadBuiltinImages({ onProgress } = {}) {
-  // 预检:已完整上云直接返回,不重复上传
+  // 预检:已完整上云直接返回(主路径),不重复上传
   const existing = await loadBuiltinImageMap();
   if (isBuiltinImageMapComplete(existing)) {
     return { alreadyDone: true, uploaded: 0, failed: [] };
   }
 
-  const names = Object.keys(builtinImages);
+  const names = BUILTIN_IMAGE_NAMES;
   const total = names.length;
   const resultMap = {}; // 菜名 → fileID(既有映射 + 本次上传,合并后全量写回)
   const failed = [];
@@ -217,9 +223,10 @@ export async function uploadBuiltinImages({ onProgress } = {}) {
             // 已上云的菜直接沿用(重试只补缺失,不重复上传)
             resultMap[name] = existing[name];
           } else {
+            // 本地源已移除:无有效 filePath,此分支注定失败(保留结构便于恢复本地源后重试)
             const res = await wx.cloud.uploadFile({
-              cloudPath: `builtin/${name}.${getExt(builtinImages[name])}`, // 包内路径直接可用作 filePath
-              filePath: builtinImages[name],
+              cloudPath: `builtin/${name}.jpg`,
+              filePath: '',
             });
             resultMap[name] = res.fileID;
             uploadedCount += 1;

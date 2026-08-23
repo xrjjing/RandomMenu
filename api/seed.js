@@ -6,7 +6,6 @@
  * 页面只 import 本模块,不直接调用 wx.cloud。
  */
 import builtinData from '../data/builtin-dishes.js';
-import builtinImages from '../data/builtin-images.js';
 import { ensureIngredient, getDishByName, saveDish, updateDishImages } from './db.js';
 import { loadBuiltinImageMap } from './upload.js';
 import { normalizeName } from '../utils/normalize.js';
@@ -29,10 +28,11 @@ function isDuplicateLockError(err) {
  *   failed 为单道菜导入失败的菜名列表(不中断整体,可再次点击补导)
  */
 export async function importBuiltinData({ onProgress } = {}) {
-  // 0. 内置图映射:云映射优先(已上云则挂 cloud:// fileID,主包瘦身),本地静态路径兜底。
-  //    loadBuiltinImageMap 云库不可达时返回 null,自动回退本地映射,不阻断导入
+  // 0. 内置图映射:云映射为唯一来源(主包瘦身,本地 static/images 已删)。
+  //    云映射已上云则内置菜挂 cloud:// fileID;读取失败(云库不可达/文档缺失)时
+  //    imageMap 为空对象 → 内置菜不挂图走 emoji 占位,不阻断导入
   const cloudMap = await loadBuiltinImageMap();
-  const imageMap = cloudMap || builtinImages;
+  const imageMap = cloudMap || {};
 
   const db = wx.cloud.database();
   // 1. 抢锁:add 成功=首次导入;add 冲突=已有人导入过
@@ -71,7 +71,7 @@ export async function importBuiltinData({ onProgress } = {}) {
       if (exists) {
         // 增量同步内置图:内置菜且映射存在时,按当前 images 判断是否需要补图——
         // 有用户云图(cloud:// fileID)或当前映射有效值则不动;
-        // 否则(旧失效路径 / 空串 / 无图)替换为内置图(imageMap 云 fileID 优先,本地静态路径兜底)。
+        // 否则(旧失效路径 / 空串 / 无图)替换为内置图(云映射 fileID 为唯一图片来源)。
         // 注意云图判断用 cloud:// 前缀而非 isCloudFileId:isCloudFileId 只排除 /static/ 前缀,
         // 会把旧 Unsplash HTTP 路径误判为云图,导致失效旧路径永远补不上。
         if (exists.isBuiltin && imageMap[dish.name]) {
