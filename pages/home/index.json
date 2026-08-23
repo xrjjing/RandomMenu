@@ -1,0 +1,14 @@
+{
+  "navigationBarTitleText": "首页",
+  "usingComponents": {
+    "t-search": "tdesign-miniprogram/search/search",
+    "t-switch": "tdesign-miniprogram/switch/switch",
+    "t-skeleton": "tdesign-miniprogram/skeleton/skeleton",
+    "t-empty": "tdesign-miniprogram/empty/empty",
+    "t-button": "tdesign-miniprogram/button/button",
+    "t-dialog": "tdesign-miniprogram/dialog/dialog",
+    "t-popup": "tdesign-miniprogram/popup/popup",
+    "t-toast": "tdesign-miniprogram/toast/toast",
+    "spin-wheel": "/components/spin-wheel/index"
+  }
+}

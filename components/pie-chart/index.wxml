@@ -1,0 +1,19 @@
+<!-- components/pie-chart/index.wxml
+     环形饼图:Canvas 2D 绘制(始终渲染,保证 ready 可查询);
+     空数据时 canvas 清空,由覆盖层显示「暂无数据」;
+     图例用 wxml 渲染两列网格(色点 + 名称 + 次数 + 百分比),保证文字清晰可读 -->
+<view class="pie-chart">
+  <canvas type="2d" id="pie-canvas" class="pie-canvas"></canvas>
+  <!-- 空数据覆盖层:居中灰字(canvas 已清空) -->
+  <view wx:if="{{data.length === 0}}" class="chart-empty">暂无数据</view>
+  <!-- 图例:wxml 两列网格,不画在 canvas 上 -->
+  <view class="pie-legend" wx:if="{{legendItems.length > 0}}">
+    <view class="pie-legend-item" wx:for="{{legendItems}}" wx:key="name">
+      <view class="pie-legend-dot" style="background: {{item.color}}"></view>
+      <view class="pie-legend-info">
+        <text class="pie-legend-name">{{item.name}}</text>
+        <text class="pie-legend-count">{{item.value}} 次 · {{item.percent}}%</text>
+      </view>
+    </view>
+  </view>
+</view>

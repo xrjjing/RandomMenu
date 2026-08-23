@@ -1,0 +1,89 @@
+<view class="page detail-page">
+  <!-- 首屏加载态 -->
+  <view wx:if="{{loading}}" class="detail-loading">
+    <t-loading theme="spinner" size="64rpx" text="加载中..." />
+  </view>
+
+  <block wx:elif="{{dish}}">
+    <!-- 图片区:有图轮播(fileID 直接渲染),无图显示分类 emoji 占位(浅橙底圆角) -->
+    <view class="detail-cover">
+      <t-swiper
+        wx:if="{{images.length > 0}}"
+        class="cover-swiper"
+        list="{{images}}"
+        height="360"
+        navigation="{{true}}"
+        autoplay="{{false}}"
+        loop="{{false}}"
+        bind:click="onImagePreview"
+      />
+      <view wx:else class="detail-cover-emoji">{{emoji}}</view>
+      <!-- 内置角标 -->
+      <view wx:if="{{dish.isBuiltin}}" class="builtin-badge">内置</view>
+    </view>
+
+    <!-- 头部卡:菜名 + 细分标签 + 时间/难度徽章 -->
+    <view class="card detail-head">
+      <view class="dish-name">{{dish.name}}</view>
+      <view wx:if="{{dish.tags.length}}" class="tag-list">
+        <t-tag
+          wx:for="{{dish.tags}}"
+          wx:key="*this"
+          size="small"
+          variant="light"
+          theme="primary"
+        >{{item}}</t-tag>
+      </view>
+      <view class="meta-row">
+        <text wx:if="{{dish.cookTime}}" class="meta-badge">⏱ {{dish.cookTime}}</text>
+        <text wx:if="{{dish.difficulty}}" class="meta-badge">{{dish.difficulty}}</text>
+      </view>
+    </view>
+
+    <!-- 原料卡:逐行「名称 + 用量」,调料行名称后加灰字标记 -->
+    <view class="card detail-section">
+      <view class="section-title">原料</view>
+      <view wx:if="{{ingredients.length === 0}}" class="section-empty">暂无原料</view>
+      <view wx:else class="ingredient-list">
+        <view class="ingredient-row" wx:for="{{ingredients}}" wx:key="name">
+          <view class="ingredient-name">
+            {{item.name}}<text wx:if="{{item.isSeasoning}}" class="seasoning-mark">(调料)</text>
+          </view>
+          <view class="ingredient-amount">{{item.amount || '适量'}}</view>
+        </view>
+      </view>
+    </view>
+
+    <!-- 做法卡:有序步骤列表(序号圆点 + 文本),为空显示引导文案 -->
+    <view class="card detail-section">
+      <view class="section-title">做法</view>
+      <view wx:if="{{dish.steps.length === 0}}" class="section-empty">暂无做法，快来补充～</view>
+      <view wx:else class="step-list">
+        <view class="step-row" wx:for="{{dish.steps}}" wx:key="*this">
+          <view class="step-index">{{index + 1}}</view>
+          <view class="step-text">{{item}}</view>
+        </view>
+      </view>
+    </view>
+
+    <!-- 底部操作栏:主按钮「编辑」/ 次按钮「删除」 -->
+    <view class="detail-actions">
+      <t-button class="action-btn" theme="primary" variant="outline" bind:tap="goEdit">编辑</t-button>
+      <t-button class="action-btn" theme="danger" variant="outline" bind:tap="onDeleteTap">删除</t-button>
+    </view>
+  </block>
+
+  <!-- 删除确认弹窗 -->
+  <t-dialog
+    visible="{{deleteVisible}}"
+    title="删除菜品"
+    content="删除后不可恢复，历史做菜记录保留。确定删除「{{dish.name}}」吗？"
+    confirm-btn="删除"
+    cancel-btn="取消"
+    bind:confirm="onDeleteConfirm"
+    bind:cancel="onDeleteCancel"
+  />
+
+  <!-- 统一轻提示 -->
+  <t-toast id="t-toast" />
+</view>

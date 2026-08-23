@@ -1,0 +1,94 @@
+<view class="page ingredient-page">
+  <!-- 顶部搜索框:输入防抖 300ms 后按名称模糊过滤 -->
+  <view class="search-wrap">
+    <t-search
+      value="{{keyword}}"
+      placeholder="搜索原料"
+      shape="round"
+      bind:change="onSearchChange"
+      bind:clear="onSearchClear"
+    />
+  </view>
+
+  <!-- 加载态 -->
+  <view wx:if="{{loading}}" class="loading-wrap">
+    <t-loading theme="spinner" size="64rpx" text="加载中..." />
+  </view>
+
+  <!-- 空态:区分「没有任何原料」与「搜索无结果」 -->
+  <view wx:elif="{{list.length === 0}}" class="empty-wrap">
+    <t-empty description="{{keyword ? '没有找到相关原料' : '还没有原料，点击下方按钮添加'}}" />
+  </view>
+
+  <!-- 原料列表 -->
+  <view wx:else class="card list-card">
+    <t-cell-group>
+      <t-cell
+        wx:for="{{list}}"
+        wx:key="_id"
+        hover="{{true}}"
+        t-class="{{item.highlight ? 'cell-highlight' : ''}}"
+        bind:click="onRowTap"
+        data-id="{{item._id}}"
+        data-name="{{item.name}}"
+      >
+        <!-- 标题:原料名 + 调料小标签 -->
+        <view slot="title" class="cell-title">
+          <text class="cell-name">{{item.name}}</text>
+          <t-tag wx:if="{{item.isSeasoning}}" theme="warning" variant="light" size="small">调料</t-tag>
+        </view>
+        <!-- 说明:被引用菜品次数 -->
+        <view slot="note" class="cell-usage">{{item.usage}} 道菜使用</view>
+        <!-- 右侧删除按钮 -->
+        <view
+          slot="right-icon"
+          class="cell-delete"
+          catch:tap="onDeleteTap"
+          data-id="{{item._id}}"
+          data-usage="{{item.usage}}"
+        >删除</view>
+      </t-cell>
+    </t-cell-group>
+  </view>
+
+  <!-- 底部主按钮:新增原料 -->
+  <view class="footer">
+    <t-button theme="primary" size="large" block="{{true}}" bind:tap="onAddTap">新增原料</t-button>
+  </view>
+
+  <!-- 新增 / 重命名弹层 -->
+  <t-dialog
+    visible="{{editDialogVisible}}"
+    title="{{editDialogTitle}}"
+    confirm-btn="确定"
+    cancel-btn="取消"
+    bind:confirm="onEditConfirm"
+    bind:cancel="onEditCancel"
+    bind:close="onEditCancel"
+  >
+    <!-- 输入区:放入 content 具名插槽(dialog 无默认插槽) -->
+    <view slot="content" class="dialog-input-wrap">
+      <t-input
+        value="{{editName}}"
+        placeholder="{{editPlaceholder}}"
+        maxlength="20"
+        bind:change="onEditNameChange"
+      />
+    </view>
+  </t-dialog>
+
+  <!-- 删除确认弹层:文案注明将解除 N 道菜品的关联 -->
+  <t-dialog
+    visible="{{deleteDialogVisible}}"
+    title="删除原料"
+    content="{{deleteTip}}"
+    confirm-btn="{{deleteConfirmBtn}}"
+    cancel-btn="取消"
+    bind:confirm="onDeleteConfirm"
+    bind:cancel="onDeleteCancel"
+    bind:close="onDeleteCancel"
+  />
+
+  <!-- 统一轻提示 -->
+  <t-toast id="t-toast" />
+</view>

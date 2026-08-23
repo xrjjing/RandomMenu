@@ -1,0 +1,8 @@
+<!-- components/bar-chart/index.wxml
+     柱状图:Canvas 2D 绘制(始终渲染,保证 ready 可查询);
+     空数据时 canvas 清空,由覆盖层显示「暂无数据」 -->
+<view class="bar-chart">
+  <canvas type="2d" id="bar-canvas" class="bar-canvas" bind:touchstart="onCanvasTouch"></canvas>
+  <!-- 空数据覆盖层:居中灰字(canvas 已清空) -->
+  <view wx:if="{{data.length === 0}}" class="chart-empty">暂无数据</view>
+</view>

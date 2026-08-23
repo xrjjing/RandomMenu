@@ -1,0 +1,25 @@
+{
+  "": [
+    {
+      "id": "notebook-1787419295502_dkgpi1f6o",
+      "filePath": "",
+      "note": "dishes.json 分类：素菜12/猪肉12/主食11/鱼虾9/汤羹8/禽肉8/蛋类4；drinks.json 覆盖果汁/奶昔/奶茶/果茶/养生热饮/甜品饮品等",
+      "createdAt": "2026-08-23T01:21:35.502",
+      "updatedAt": "2026-08-23T01:21:35.502"
+    },
+    {
+      "id": "notebook-1787419295502_t1kzndfqs",
+      "filePath": "",
+      "note": "根目录已建立菜品/饮品数据文件：dishes.json（64道家常菜）、drinks.json（16道饮品），均为 JSON 数组格式，字段：id/name/category/cookTime/difficulty/ingredients/steps，可直接被小程序代码引用",
+      "createdAt": "2026-08-23T01:21:35.502",
+      "updatedAt": "2026-08-23T01:21:35.502"
+    },
+    {
+      "id": "notebook-1787419295502_xc2pxdc99",
+      "filePath": "",
+      "note": "项目为 TDesign 微信小程序模板（RandomMenu 随机菜单），菜单开发尚未开始",
+      "createdAt": "2026-08-23T01:21:35.502",
+      "updatedAt": "2026-08-23T01:21:35.502"
+    }
+  ]
+}

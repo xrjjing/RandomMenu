@@ -1,0 +1,52 @@
+/* components/spin-wheel/index.less
+   组件样式自包含:不 import app.less,色值固定(与全局主色 #ff8c42 保持一致) */
+
+/* 组件容器:600rpx 方形,盘面居中 */
+.spin-wheel {
+  position: relative;
+  width: 600rpx;
+  height: 600rpx;
+  margin: 24rpx auto;
+}
+
+/* Canvas 画布:与容器同尺寸,块级避免底部空隙 */
+.spin-canvas {
+  width: 600rpx;
+  height: 600rpx;
+  display: block;
+}
+
+/* 指针:正上方向下三角,主色填充,尖端指向盘面外缘 */
+.wheel-pointer {
+  position: absolute;
+  top: -8rpx;
+  left: 50%;
+  margin-left: -22rpx;
+  width: 0;
+  height: 0;
+  border-left: 22rpx solid transparent;
+  border-right: 22rpx solid transparent;
+  border-top: 36rpx solid #ff8c42;
+  z-index: 3;
+}
+
+/* 中央圆钮「转」:白色圆底 + 主色描边,柔和阴影,点击可触发旋转 */
+.wheel-center {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 108rpx;
+  height: 108rpx;
+  margin: -54rpx 0 0 -54rpx;
+  border-radius: 50%;
+  background: #fff;
+  border: 6rpx solid #ff8c42;
+  color: #ff8c42;
+  font-size: 36rpx;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2;
+  box-shadow: 0 4rpx 16rpx rgba(0, 0, 0, 0.08);
+}

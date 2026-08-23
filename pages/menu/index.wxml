@@ -1,0 +1,100 @@
+<view class="page menu-page">
+  <!-- 顶部搜索框:输入防抖 300ms 后按菜名/原料/做法三字段模糊搜索 -->
+  <view class="search-wrap">
+    <t-search
+      value="{{keyword}}"
+      placeholder="搜索菜名 / 原料 / 做法"
+      shape="round"
+      bind:change="onSearchChange"
+      bind:clear="onSearchClear"
+    />
+  </view>
+
+  <!-- 大类选项卡:全部 / 餐食 / 饮品 -->
+  <view class="category-tabs">
+    <t-tabs value="{{category}}" bind:change="onCategoryChange">
+      <t-tab-panel label="全部" value="" />
+      <t-tab-panel label="餐食" value="meal" />
+      <t-tab-panel label="饮品" value="drink" />
+    </t-tabs>
+  </view>
+
+  <!-- 细分标签:2 列网格,默认折叠只显示前 tagVisibleCount 个(选中项固定在前);右侧按钮展开/折叠 -->
+  <view wx:if="{{tagChips.length > 1}}" class="card tag-card">
+    <view class="tag-card-header">
+      <text class="tag-card-title">细分标签</text>
+      <view wx:if="{{tagChips.length > tagVisibleCount}}" class="tag-toggle" bind:tap="onToggleTagChips">{{chipsCollapsed ? '▾ 全部标签' : '▴ 折叠'}}</view>
+    </view>
+    <view class="tag-grid">
+      <block wx:for="{{displayTagChips}}" wx:key="name">
+        <view
+          wx:if="{{!chipsCollapsed || index < tagVisibleCount}}"
+          class="tag-cell {{item.active ? 'tag-cell-active' : ''}}"
+          bind:tap="onTagTap"
+          data-value="{{item.name}}"
+        >{{item.name}}</view>
+      </block>
+    </view>
+  </view>
+
+  <!-- 首屏骨架屏:3 行卡片形骨架(数据到位后隐藏;翻页/下拉/静默刷新不显示) -->
+  <view wx:if="{{loading}}" class="skeleton-wrap">
+    <view class="card skeleton-card" wx:for="{{skeletonCards}}" wx:key="*this">
+      <t-skeleton row-col="{{menuSkeletonRowCol}}" animation="gradient" />
+    </view>
+  </view>
+
+  <!-- 空态:无菜谱(引导初始化)或搜索/筛选无结果 -->
+  <view wx:elif="{{list.length === 0}}" class="empty-wrap">
+    <t-empty description="{{hasFilter ? '换个关键词试试' : '还没有菜谱，去「更多」页初始化内置菜谱吧'}}">
+      <view slot="action" class="empty-action">
+        <t-button wx:if="{{!hasFilter}}" size="small" theme="primary" bind:tap="goMore">去初始化</t-button>
+      </view>
+    </t-empty>
+  </view>
+
+  <!-- 卡片流列表 -->
+  <view wx:else class="dish-list">
+    <view
+      class="card dish-card"
+      wx:for="{{list}}"
+      wx:key="_id"
+      hover-class="dish-card-hover"
+      bind:tap="onDishTap"
+      data-id="{{item._id}}"
+    >
+      <!-- 首图:有图用 fileID 渲染,无图显示分类 emoji 大字(浅橙底圆角) -->
+      <view class="dish-cover">
+        <image wx:if="{{item.cover}}" class="dish-cover-img" src="{{item.cover}}" mode="aspectFill" />
+        <view wx:else class="dish-cover-emoji">{{item.emoji}}</view>
+        <!-- 内置角标 -->
+        <view wx:if="{{item.isBuiltin}}" class="builtin-badge">内置</view>
+      </view>
+      <view class="dish-info">
+        <view class="dish-name">{{item.name}}</view>
+        <!-- 原料名标签:前 4 个 + 其余数量 -->
+        <view class="dish-ingredients">
+          <text class="ing-tag" wx:for="{{item.ingredientTags}}" wx:for-item="ing" wx:key="*this">{{ing}}</text>
+          <text wx:if="{{item.extraCount > 0}}" class="ing-more">+{{item.extraCount}}</text>
+        </view>
+        <!-- 时间 / 难度小徽章 -->
+        <view class="dish-meta">
+          <text wx:if="{{item.cookTime}}" class="meta-badge">⏱ {{item.cookTime}}</text>
+          <text wx:if="{{item.difficulty}}" class="meta-badge">{{item.difficulty}}</text>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <!-- 翻页 footer:加载中 / 没有更多了 -->
+  <view wx:if="{{!loading && list.length > 0}}" class="list-footer">
+    <text wx:if="{{loadingMore}}">加载中...</text>
+    <text wx:elif="{{!hasMore}}">没有更多了</text>
+  </view>
+
+  <!-- 右下角浮动新增按钮:固定圆形主色 ➕ -->
+  <view class="fab-add" hover-class="fab-add-hover" bind:tap="goAdd">＋</view>
+
+  <!-- 统一轻提示 -->
+  <t-toast id="t-toast" />
+</view>

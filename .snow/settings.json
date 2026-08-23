@@ -1,0 +1,10 @@
+{
+  "yoloMode": false,
+  "planMode": false,
+  "vulnerabilityHuntingMode": false,
+  "toolSearchEnabled": false,
+  "hybridCompressEnabled": false,
+  "imageCompressEnabled": false,
+  "teamMode": false,
+  "ultraTodoEnabled": false
+}

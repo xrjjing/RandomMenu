@@ -1,0 +1,9 @@
+<!-- components/spin-wheel/index.wxml
+     随机转盘:Canvas 2D 绘制盘面,指针与中央圆钮用 CSS 覆盖层 -->
+<view class="spin-wheel">
+  <canvas type="2d" id="spin-canvas" class="spin-canvas"></canvas>
+  <!-- 指针:固定在正上方(CSS 向下三角,主色填充) -->
+  <view class="wheel-pointer"></view>
+  <!-- 中央圆钮「转」:点击触发旋转(与页面「开始旋转」等效) -->
+  <view class="wheel-center" bind:tap="onCenterTap">转</view>
+</view>

@@ -1,0 +1,165 @@
+/* pages/stats/index.less
+   统计页样式:粒度切换(t-tabs)+ 期切换箭头 + 图型切换(t-tag)+ 图表卡片 + 原料榜。
+   遵循 app.less 基线:暖橙主色 #ff8c42、圆角卡片 .card、浅灰背景 #f5f6f7 */
+
+/* 粒度 t-tabs 与下方内容留白 */
+.stats-tabs {
+  margin-bottom: 8rpx;
+}
+
+/* 期切换行:左右箭头 + 当前期文案,居中 */
+.period-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16rpx 0 8rpx;
+}
+
+/* 箭头:白色圆底 + 主色,柔和阴影;禁用态灰底灰字 */
+.period-arrow {
+  width: 64rpx;
+  height: 64rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 44rpx;
+  color: #ff8c42;
+  background: #fff;
+  border-radius: 50%;
+  box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.06);
+}
+
+.period-arrow-disabled {
+  color: #ccc;
+  background: #f0f0f0;
+  box-shadow: none;
+}
+
+/* 当前期文案:如「8月23日」「2026年8月」「2026年」 */
+.period-text {
+  min-width: 240rpx;
+  text-align: center;
+  font-size: 32rpx;
+  font-weight: 600;
+  color: #333;
+}
+
+/* 图型切换 t-tag 行 */
+.chart-type-row {
+  display: flex;
+  justify-content: center;
+  gap: 24rpx;
+  padding: 8rpx 0 24rpx;
+}
+
+/* 图表卡片:留白略收,给 canvas 更多空间 */
+.chart-card {
+  padding: 16rpx 16rpx 24rpx;
+}
+
+/* 加载态 / 空态 */
+.loading-wrap {
+  padding: 120rpx 0;
+  display: flex;
+  justify-content: center;
+}
+
+.empty-wrap {
+  padding: 60rpx 0;
+}
+
+/* 空态引导文案 */
+.empty-tip {
+  text-align: center;
+  font-size: 26rpx;
+  color: #999;
+  margin-top: 8rpx;
+}
+
+/* 原料榜:含调料开关行(右对齐) */
+.ingredient-switch-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 16rpx 0 24rpx;
+}
+
+.ingredient-switch-label {
+  font-size: 26rpx;
+  color: #666;
+  margin-right: 16rpx;
+}
+
+/* 原料榜列表 */
+.ingredient-list {
+  padding: 8rpx 24rpx;
+}
+
+.ingredient-item {
+  display: flex;
+  align-items: center;
+  padding: 20rpx 0;
+  border-bottom: 1rpx solid #f2f2f2;
+}
+
+.ingredient-item:last-child {
+  border-bottom: none;
+}
+
+/* 名次圆形徽章:默认浅灰,前三名浅橙底主色加粗 */
+.ingredient-rank {
+  width: 44rpx;
+  height: 44rpx;
+  border-radius: 50%;
+  background: #f5f6f7;
+  color: #999;
+  font-size: 24rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 20rpx;
+  flex-shrink: 0;
+}
+
+.ingredient-rank-top {
+  background: #fff1e6;
+  color: #ff8c42;
+  font-weight: 600;
+}
+
+/* 名称 + 次数行 */
+.ingredient-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.ingredient-name-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 10rpx;
+}
+
+.ingredient-name {
+  font-size: 28rpx;
+  color: #333;
+}
+
+.ingredient-count {
+  font-size: 24rpx;
+  color: #999;
+}
+
+/* 次数进度条:浅灰底 + 主色填充(宽度百分比由 js 计算) */
+.ingredient-bar {
+  height: 14rpx;
+  background: #f0f0f0;
+  border-radius: 8rpx;
+  overflow: hidden;
+}
+
+.ingredient-bar-fill {
+  height: 100%;
+  background: #ff8c42;
+  border-radius: 8rpx;
+}

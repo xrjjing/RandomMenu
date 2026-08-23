@@ -1,0 +1,190 @@
+<view class="page home-page">
+  <!-- 今日已定卡:当天落账记录(菜名 + 时间),每行右侧「撤销」 -->
+  <view class="card today-card">
+    <view class="card-title">今日已定</view>
+    <view wx:if="{{today.length === 0}}" class="today-empty">今天还没定，选一道吧 👇</view>
+    <view wx:else class="today-list">
+      <view class="today-row" wx:for="{{today}}" wx:key="_id">
+        <view class="today-info">
+          <text class="today-name">{{item.dishName}}</text>
+          <text class="today-time">{{item.time}}</text>
+        </view>
+        <!-- 撤销文字按钮:点击确认后删除的是当天最后一条记录(见弹层文案) -->
+        <view class="today-undo" catch:tap="onUndoTap">撤销</view>
+      </view>
+    </view>
+  </view>
+
+  <!-- 冰箱里有什么:横向 chips 多选原料(排除调料),顶部小搜索防抖 300ms 过滤 -->
+  <view class="card fridge-card">
+    <view class="card-title">冰箱里有什么</view>
+    <view class="fridge-search">
+      <t-search
+        value="{{ingredientKeyword}}"
+        placeholder="搜索原料"
+        shape="round"
+        t-class="fridge-search-input"
+        bind:change="onIngredientSearch"
+        bind:clear="onIngredientSearchClear"
+      />
+    </view>
+    <scroll-view wx:if="{{ingredientChips.length > 0}}" scroll-x class="chip-scroll" enhanced show-scrollbar="{{false}}">
+      <view class="chip-list">
+        <view
+          class="chip {{item.active ? 'chip-active' : ''}}"
+          wx:for="{{ingredientChips}}"
+          wx:key="name"
+          bind:tap="onIngredientTap"
+          data-name="{{item.name}}"
+        >{{item.name}}</view>
+      </view>
+    </scroll-view>
+    <view wx:else class="fridge-empty">冰箱空空如也，先去原料库添加原料吧</view>
+  </view>
+
+  <!-- 匹配结果:模式切换(t-switch)+ 分类入口 + 卡片流 -->
+  <view class="match-header">
+    <view class="match-title">匹配结果</view>
+    <view class="mode-row">
+      <text class="mode-label">{{completeMode ? '完全匹配' : '有交集即可'}}</text>
+      <t-switch value="{{completeMode}}" bind:change="onModeChange" />
+    </view>
+  </view>
+
+  <!-- 分类入口 chips:未选原料时展示(全部/餐食/饮品),点击进入对应分类浏览(再点取消回到引导态) -->
+  <view wx:if="{{selectedNames.length === 0}}" class="match-cats">
+    <view class="chip {{matchSearched && matchCategory === '' ? 'chip-active' : ''}}" data-value="" bind:tap="onCategoryTap">全部</view>
+    <view class="chip {{matchSearched && matchCategory === 'meal' ? 'chip-active' : ''}}" data-value="meal" bind:tap="onCategoryTap">餐食</view>
+    <view class="chip {{matchSearched && matchCategory === 'drink' ? 'chip-active' : ''}}" data-value="drink" bind:tap="onCategoryTap">饮品</view>
+  </view>
+
+  <!-- 首屏骨架屏:今日卡 + 冰箱 chips 区组合(数据到位后隐藏;翻页/静默刷新不显示) -->
+  <view wx:if="{{loading}}" class="skeleton-wrap">
+    <view class="card skeleton-card">
+      <t-skeleton row-col="{{todaySkeletonRowCol}}" animation="gradient" />
+    </view>
+    <view class="card skeleton-card">
+      <t-skeleton row-col="{{fridgeSkeletonRowCol}}" animation="gradient" />
+    </view>
+  </view>
+
+  <!-- 未搜索引导态:未选原料且未选分类时,不展示菜品列表,仅文案引导 + 分类入口 -->
+  <view wx:elif="{{selectedNames.length === 0 && !matchSearched}}" class="match-guide">
+    <view class="match-guide-text">选择原料，或让我们抽一个</view>
+  </view>
+
+  <!-- 空态:区分「无菜谱(去初始化)」与「选了原料但无匹配/分类无菜」 -->
+  <view wx:elif="{{matchList.length === 0}}" class="empty-wrap">
+    <t-empty description="{{matchEmptyText}}">
+      <view slot="action" class="empty-action">
+        <t-button wx:if="{{noDishes}}" size="small" theme="primary" bind:tap="goMore">去初始化</t-button>
+      </view>
+    </t-empty>
+  </view>
+
+  <!-- 匹配卡片流:复用菜谱列表页卡片风格(首图/emoji、菜名、原料标签、徽章、内置角标)+ 匹配度百分比 -->
+  <view wx:else class="match-list">
+    <view
+      class="card match-card"
+      wx:for="{{matchList}}"
+      wx:key="_id"
+      hover-class="match-card-hover"
+      bind:tap="onDishTap"
+      data-id="{{item._id}}"
+      data-name="{{item.name}}"
+    >
+      <!-- 首图:有图用 fileID 渲染,无图显示分类 emoji 大字(浅橙底圆角) -->
+      <view class="dish-cover">
+        <image wx:if="{{item.cover}}" class="dish-cover-img" src="{{item.cover}}" mode="aspectFill" />
+        <view wx:else class="dish-cover-emoji">{{item.emoji}}</view>
+        <!-- 内置角标 -->
+        <view wx:if="{{item.isBuiltin}}" class="builtin-badge">内置</view>
+      </view>
+      <view class="dish-info">
+        <view class="dish-name-row">
+          <text class="dish-name">{{item.name}}</text>
+          <!-- 匹配度百分比徽章(未选原料浏览全部时不显示) -->
+          <text wx:if="{{item.score}}" class="score-badge">{{item.score}}</text>
+        </view>
+        <!-- 原料名标签:前 4 个 + 其余数量 -->
+        <view class="dish-ingredients">
+          <text class="ing-tag" wx:for="{{item.ingredientTags}}" wx:for-item="ing" wx:key="*this">{{ing}}</text>
+          <text wx:if="{{item.extraCount > 0}}" class="ing-more">+{{item.extraCount}}</text>
+        </view>
+        <!-- 时间 / 难度小徽章 -->
+        <view class="dish-meta">
+          <text wx:if="{{item.cookTime}}" class="meta-badge">⏱ {{item.cookTime}}</text>
+          <text wx:if="{{item.difficulty}}" class="meta-badge">{{item.difficulty}}</text>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <!-- 翻页 footer:未选原料浏览全部时触底翻页 -->
+  <view wx:if="{{!loading && matchList.length > 0}}" class="list-footer">
+    <text wx:if="{{matchLoadingMore}}">加载中...</text>
+    <text wx:elif="{{!matchHasMore}}">没有更多了</text>
+  </view>
+
+  <!-- 转盘入口按钮:候选为空(无匹配/无菜谱)时禁用置灰并提示;点击打开半屏转盘弹层 -->
+  <view class="wheel-btn {{wheelDisabled ? 'wheel-btn-disabled' : ''}}" bind:tap="onWheelBtnTap">🎰 {{wheelDisabled ? '先选几道菜或添加菜谱' : '随机转盘'}}</view>
+
+  <!-- 随机转盘半屏弹层:底部弹出,内嵌 spin-wheel 组件(items=当前候选) -->
+  <t-popup
+    visible="{{wheelVisible}}"
+    placement="bottom"
+    bind:visible-change="onWheelVisibleChange"
+  >
+    <view slot="content" class="wheel-popup">
+      <view class="wheel-popup-header">
+        <view class="wheel-popup-title">随机转盘</view>
+        <view class="wheel-popup-count">候选 {{candidates.length}} 道，最多展示 12 道</view>
+      </view>
+      <spin-wheel id="wheel" items="{{candidates}}" bind:spinstart="onSpinStart" bind:spinend="onSpinEnd" />
+      <t-button block theme="primary" disabled="{{wheelSpinning}}" bind:tap="onStartSpin">
+        {{wheelSpinning ? '旋转中…' : '开始旋转'}}
+      </t-button>
+      <view class="wheel-popup-tip">也可点击转盘中央「转」开始；转出后点「就吃它了」直接落账</view>
+    </view>
+  </t-popup>
+
+  <!-- 转盘结果弹层:「就吃它了」落账 /「换一个」重转;点遮罩可关闭回到转盘 -->
+  <t-dialog
+    visible="{{wheelResultVisible}}"
+    title="今晚就吃"
+    content="{{wheelResultText}}"
+    confirm-btn="就吃它了"
+    cancel-btn="换一个"
+    close-on-overlay-click
+    bind:confirm="onWheelConfirm"
+    bind:cancel="onWheelAgain"
+    bind:close="onWheelResultClose"
+  />
+
+  <!-- 「就做这道?」确认落账弹层 -->
+  <t-dialog
+    visible="{{dishDialogVisible}}"
+    title="就做这道？"
+    content="{{pendingDishText}}"
+    confirm-btn="确定"
+    cancel-btn="取消"
+    bind:confirm="onDishConfirm"
+    bind:cancel="onDishCancel"
+    bind:close="onDishCancel"
+  />
+
+  <!-- 撤销确认弹层:文案写清撤销的是当天最后一条记录 -->
+  <t-dialog
+    visible="{{undoDialogVisible}}"
+    title="撤销记录"
+    content="将撤销今天最后一条记录「{{undoName}}」，确定吗？"
+    confirm-btn="{{undoConfirmBtn}}"
+    cancel-btn="取消"
+    bind:confirm="onUndoConfirm"
+    bind:cancel="onUndoCancel"
+    bind:close="onUndoCancel"
+  />
+
+  <!-- 统一轻提示 -->
+  <t-toast id="t-toast" />
+</view>

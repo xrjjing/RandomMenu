@@ -1,0 +1,40 @@
+/**app 全局样式**/
+page {
+  /* TDesign 主题变量覆盖：主色暖橙（食欲色） */
+  --td-brand-color: #ff8c42;
+  --td-brand-color-active: #e0762f;
+  --td-brand-color-light: #fff1e6;
+
+  background-color: #f5f6f7;
+  font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif;
+}
+
+/* 页面通用容器
+   min-height:100vh 撑满视口:修复 fixed 浮动按钮(如菜单页 ➕)在内容不足一屏时的对齐偏差;
+   box-sizing + 底部 padding 统一防末操作栏贴底,并兼容 iPhone 安全区 */
+.page {
+  min-height: 100vh;
+  box-sizing: border-box;
+  padding: 24rpx 32rpx calc(56rpx + env(safe-area-inset-bottom));
+}
+
+/* 通用白色圆角卡片 */
+.card {
+  background-color: #fff;
+  border-radius: 24rpx;
+  padding: 24rpx;
+  box-shadow: 0 2rpx 12rpx rgba(0, 0, 0, 0.04);
+}
+
+/* 占位页文案（骨架阶段） */
+.page-title {
+  font-size: 40rpx;
+  font-weight: 600;
+  color: #333;
+}
+
+.page-desc {
+  margin-top: 16rpx;
+  font-size: 26rpx;
+  color: #999;
+}

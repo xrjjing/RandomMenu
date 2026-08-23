@@ -1,0 +1,14 @@
+{
+  "navigationBarTitleText": "菜谱",
+  "enablePullDownRefresh": true,
+  "backgroundColor": "#f5f6f7",
+  "usingComponents": {
+    "t-search": "tdesign-miniprogram/search/search",
+    "t-tabs": "tdesign-miniprogram/tabs/tabs",
+    "t-tab-panel": "tdesign-miniprogram/tab-panel/tab-panel",
+    "t-skeleton": "tdesign-miniprogram/skeleton/skeleton",
+    "t-empty": "tdesign-miniprogram/empty/empty",
+    "t-button": "tdesign-miniprogram/button/button",
+    "t-toast": "tdesign-miniprogram/toast/toast"
+  }
+}

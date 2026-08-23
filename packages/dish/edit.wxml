@@ -1,0 +1,207 @@
+<view class="page edit-page">
+  <!-- 编辑模式回填加载态 -->
+  <view wx:if="{{loading}}" class="edit-loading">
+    <t-loading theme="spinner" size="64rpx" text="加载中..." />
+  </view>
+
+  <block wx:else>
+    <!-- 基础信息卡:菜名 + 大类 -->
+    <view class="card form-card">
+      <view class="form-label">菜名</view>
+      <t-input
+        value="{{name}}"
+        placeholder="请输入菜名"
+        maxlength="30"
+        bind:change="onNameChange"
+      />
+      <view class="form-label form-label-gap">分类</view>
+      <t-radio-group value="{{category}}" bind:change="onCategoryChange">
+        <t-radio label="餐食" value="meal" />
+        <t-radio label="饮品" value="drink" />
+      </t-radio-group>
+    </view>
+
+    <!-- 细分标签卡:常用 chips 多选 + 自定义标签新增 -->
+    <view class="card form-card">
+      <view class="form-label">细分标签</view>
+      <view class="tag-chips">
+        <view
+          wx:for="{{tagChips}}"
+          wx:key="name"
+          class="tag-chip {{item.active ? 'tag-chip-active' : ''}}"
+          bind:tap="onTagTap"
+          data-value="{{item.name}}"
+        >{{item.name}}</view>
+      </view>
+      <view class="custom-tag-row">
+        <t-input
+          class="custom-tag-input"
+          value="{{customTag}}"
+          placeholder="自定义标签，回车添加"
+          confirm-type="done"
+          maxlength="10"
+          bind:change="onCustomTagInput"
+          bind:enter="onCustomTagConfirm"
+        />
+        <t-button class="custom-tag-btn" size="small" variant="outline" bind:tap="onCustomTagAdd">添加</t-button>
+      </view>
+    </view>
+
+    <!-- 时间 / 难度卡:点击行弹出 picker -->
+    <view class="card form-card">
+      <view class="picker-row">
+        <view class="picker-label">烹饪时间</view>
+        <view class="picker-value {{cookTime ? '' : 'picker-value-placeholder'}}" bind:tap="onCookTimeTap">
+          {{cookTime || '请选择'}}
+        </view>
+      </view>
+      <view class="picker-row">
+        <view class="picker-label">难度</view>
+        <view class="picker-value {{difficulty ? '' : 'picker-value-placeholder'}}" bind:tap="onDifficultyTap">
+          {{difficulty || '请选择'}}
+        </view>
+      </view>
+    </view>
+
+    <!-- 图片九宫格:已选缩略图(右上 ✕ 删除)+ 尾部 ➕ 格 -->
+    <view class="card form-card">
+      <view class="form-label">图片（最多 {{MAX_IMAGES}} 张）</view>
+      <view class="image-grid">
+        <view class="image-cell" wx:for="{{images}}" wx:key="*this">
+          <image
+            class="image-thumb"
+            src="{{item}}"
+            mode="aspectFill"
+            data-index="{{index}}"
+            bind:tap="onPreviewImage"
+          />
+          <view class="image-remove" data-index="{{index}}" catch:tap="onRemoveImage">✕</view>
+        </view>
+        <view wx:if="{{images.length < MAX_IMAGES}}" class="image-cell image-add" bind:tap="onAddImage">＋</view>
+      </view>
+    </view>
+
+    <!-- 原料编辑区:已选行(名称 + 用量输入 + 删除)+ 添加原料按钮 -->
+    <view class="card form-card">
+      <view class="form-label">原料</view>
+      <view wx:if="{{ingredients.length === 0}}" class="ingredient-empty">暂无原料，点击下方按钮添加</view>
+      <view class="ingredient-row" wx:for="{{ingredients}}" wx:key="name">
+        <view class="ingredient-name">
+          {{item.name}}<text wx:if="{{item.isSeasoning}}" class="seasoning-mark">(调料)</text>
+        </view>
+        <t-input
+          class="ingredient-amount"
+          value="{{item.amount}}"
+          placeholder="如 2个"
+          maxlength="20"
+          data-index="{{index}}"
+          bind:change="onAmountChange"
+        />
+        <view class="ingredient-remove" data-index="{{index}}" catch:tap="onRemoveIngredient">✕</view>
+      </view>
+      <t-button block variant="outline" bind:tap="openIngredientPopup">＋ 添加原料</t-button>
+    </view>
+
+    <!-- 步骤编辑区:每步 textarea + 上移/下移/删除 + 添加步骤 -->
+    <view class="card form-card">
+      <view class="form-label">做法步骤</view>
+      <view class="step-row" wx:for="{{steps}}" wx:key="id">
+        <view class="step-index">{{index + 1}}</view>
+        <view class="step-body">
+          <t-textarea
+            value="{{item.text}}"
+            placeholder="请输入第 {{index + 1}} 步做法"
+            autosize
+            maxlength="200"
+            data-index="{{index}}"
+            bind:change="onStepChange"
+          />
+          <view class="step-ops">
+            <text class="step-op" data-index="{{index}}" bind:tap="onStepUp">上移</text>
+            <text class="step-op" data-index="{{index}}" bind:tap="onStepDown">下移</text>
+            <text class="step-op step-op-danger" data-index="{{index}}" bind:tap="onStepRemove">删除</text>
+          </view>
+        </view>
+      </view>
+      <t-button block variant="outline" bind:tap="onAddStep">＋ 添加步骤</t-button>
+    </view>
+
+    <!-- 底部保存栏 -->
+    <view class="save-bar">
+      <t-button block theme="primary" loading="{{saving}}" bind:tap="onSave">保存</t-button>
+    </view>
+  </block>
+
+  <!-- 烹饪时间选择器 -->
+  <t-picker
+    visible="{{cookTimeVisible}}"
+    value="{{cookTime ? [cookTime] : []}}"
+    title="烹饪时间"
+    data-type="cookTime"
+    bind:confirm="onPickerConfirm"
+    bind:cancel="onPickerCancel"
+  >
+    <t-picker-item options="{{cookTimeOptions}}" />
+  </t-picker>
+
+  <!-- 难度选择器 -->
+  <t-picker
+    visible="{{difficultyVisible}}"
+    value="{{difficulty ? [difficulty] : []}}"
+    title="难度"
+    data-type="difficulty"
+    bind:confirm="onPickerConfirm"
+    bind:cancel="onPickerCancel"
+  >
+    <t-picker-item options="{{difficultyOptions}}" />
+  </t-picker>
+
+  <!-- 原料选择弹层:半屏弹出,搜索防抖过滤 + 勾选列表 + 无结果即时新增 -->
+  <t-popup
+    visible="{{popupVisible}}"
+    placement="bottom"
+    bind:visible-change="onPopupVisibleChange"
+  >
+    <view class="ingredient-popup">
+      <view class="popup-title">选择原料</view>
+      <t-search
+        value="{{searchKw}}"
+        placeholder="搜索原料"
+        shape="round"
+        bind:change="onIngredientSearch"
+      />
+      <!-- 搜索无结果:即时新增入口(不必先落库,保存时 saveDish 统一 ensure) -->
+      <view wx:if="{{searchKw && ingredientCandidates.length === 0}}" class="quick-add" bind:tap="onQuickAddIngredient">
+        ＋ 新增原料"{{searchKw}}"
+      </view>
+      <scroll-view scroll-y class="popup-list">
+        <t-cell
+          wx:for="{{ingredientCandidates}}"
+          wx:key="_id"
+          title="{{item.name}}"
+          description="{{item.isSeasoning ? '调料' : ''}}"
+          hover="{{true}}"
+          data-id="{{item._id}}"
+          data-name="{{item.name}}"
+          bind:tap="onIngredientToggle"
+        >
+          <view slot="right-icon" class="check-icon {{item.checked ? 'check-icon-on' : ''}}">{{item.checked ? '✓' : ''}}</view>
+        </t-cell>
+      </scroll-view>
+    </view>
+  </t-popup>
+
+  <!-- 重名确认弹窗 -->
+  <t-dialog
+    visible="{{duplicateVisible}}"
+    title="提示"
+    content="已存在同名菜，仍要保存吗？"
+    confirm-btn="仍要保存"
+    cancel-btn="取消"
+    bind:confirm="onDuplicateConfirm"
+    bind:cancel="onDuplicateCancel"
+  />
+
+  <!-- 统一轻提示 -->
+  <t-toast id="t-toast" />
+</view>

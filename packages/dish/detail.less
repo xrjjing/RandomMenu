@@ -1,0 +1,170 @@
+/* 菜品详情页样式
+   设计基线:暖橙主色 #ff8c42、圆角卡片 .card、浅灰背景 #f5f6f7(见 app.less) */
+
+/* 首屏加载态:垂直居中 */
+.detail-loading {
+  display: flex;
+  justify-content: center;
+  padding: 200rpx 0;
+}
+
+/* 图片区:圆角容器;无图时浅橙底显示分类 emoji 大字 */
+.detail-cover {
+  position: relative;
+  border-radius: 24rpx;
+  overflow: hidden;
+  margin-bottom: 20rpx;
+  background: #fff1e6;
+}
+
+.cover-swiper {
+  width: 100%;
+}
+
+.detail-cover-emoji {
+  height: 400rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 160rpx;
+  background: #fff1e6;
+}
+
+/* 内置角标:左上角暖橙小标签 */
+.builtin-badge {
+  position: absolute;
+  top: 0;
+  left: 0;
+  padding: 6rpx 16rpx;
+  background: #ff8c42;
+  color: #fff;
+  font-size: 22rpx;
+  border-radius: 24rpx 0 24rpx 0;
+  z-index: 2;
+}
+
+/* 头部卡:菜名 + 标签 + 徽章 */
+.detail-head {
+  margin-bottom: 20rpx;
+}
+
+.dish-name {
+  font-size: 40rpx;
+  font-weight: 600;
+  color: #333;
+}
+
+.tag-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12rpx;
+  margin-top: 16rpx;
+}
+
+.meta-row {
+  display: flex;
+  gap: 12rpx;
+  margin-top: 16rpx;
+}
+
+.meta-badge {
+  font-size: 22rpx;
+  color: #ff8c42;
+  background: #fff1e6;
+  border-radius: 8rpx;
+  padding: 6rpx 14rpx;
+}
+
+/* 区块卡(原料 / 做法) */
+.detail-section {
+  margin-bottom: 20rpx;
+}
+
+.section-title {
+  font-size: 30rpx;
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 16rpx;
+}
+
+.section-empty {
+  font-size: 26rpx;
+  color: #999;
+  padding: 12rpx 0;
+}
+
+/* 原料行:名称(调料灰字标记) + 用量 */
+.ingredient-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.ingredient-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14rpx 0;
+  border-bottom: 2rpx solid #f5f6f7;
+}
+
+.ingredient-row:last-child {
+  border-bottom: none;
+}
+
+.ingredient-name {
+  font-size: 28rpx;
+  color: #333;
+}
+
+.seasoning-mark {
+  font-size: 22rpx;
+  color: #999;
+  margin-left: 8rpx;
+}
+
+.ingredient-amount {
+  font-size: 26rpx;
+  color: #666;
+}
+
+/* 步骤列表:序号圆点 + 文本 */
+.step-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16rpx;
+}
+
+.step-row {
+  display: flex;
+  gap: 16rpx;
+}
+
+.step-index {
+  flex-shrink: 0;
+  width: 40rpx;
+  height: 40rpx;
+  border-radius: 50%;
+  background: #ff8c42;
+  color: #fff;
+  font-size: 24rpx;
+  line-height: 40rpx;
+  text-align: center;
+}
+
+.step-text {
+  flex: 1;
+  font-size: 28rpx;
+  color: #333;
+  line-height: 44rpx;
+}
+
+/* 底部操作栏:编辑 / 删除,底部留白 */
+.detail-actions {
+  display: flex;
+  gap: 20rpx;
+  margin: 8rpx 0 48rpx;
+}
+
+.action-btn {
+  flex: 1;
+}

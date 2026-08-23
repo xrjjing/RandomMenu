@@ -1,0 +1,22 @@
+<view class="page more-page">
+  <!-- 功能入口列表 -->
+  <view class="card more-card">
+    <t-cell-group>
+      <t-cell
+        title="原料库"
+        note="管理菜谱用到的原料"
+        arrow="{{true}}"
+        hover="{{true}}"
+        bind:click="goIngredient"
+      />
+      <t-cell
+        title="初始化内置菜谱"
+        note="导入系统预置的家常菜与饮品"
+        arrow="{{true}}"
+        hover="{{true}}"
+        bind:click="goImportBuiltin"
+      />
+    </t-cell-group>
+  </view>
+  <t-toast id="t-toast" />
+</view>

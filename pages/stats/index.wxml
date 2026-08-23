@@ -1,0 +1,107 @@
+<view class="page stats-page">
+  <!-- 顶部粒度切换:日 / 月 / 年 / 原料榜 -->
+  <view class="stats-tabs">
+    <t-tabs value="{{activeTab}}" bind:change="onTabChange">
+      <t-tab-panel label="日" value="day" />
+      <t-tab-panel label="月" value="month" />
+      <t-tab-panel label="年" value="year" />
+      <t-tab-panel label="原料榜" value="ingredient" />
+    </t-tabs>
+  </view>
+
+  <!-- 期切换:左右箭头 + 当前期文案(未来期右箭头禁用) -->
+  <view class="period-row">
+    <view
+      class="period-arrow {{prevDisabled ? 'period-arrow-disabled' : ''}}"
+      bind:tap="onPrev"
+    >‹</view>
+    <view class="period-text">{{periodText}}</view>
+    <view
+      class="period-arrow {{nextDisabled ? 'period-arrow-disabled' : ''}}"
+      bind:tap="onNext"
+    >›</view>
+  </view>
+
+  <!-- 日 / 月 / 年:图型切换(t-tag)+ 图表 -->
+  <block wx:if="{{activeTab !== 'ingredient'}}">
+    <!-- 图型切换:柱状图 / 饼图(选中态主色高亮) -->
+    <view class="chart-type-row">
+      <t-tag
+        theme="{{chartType === 'bar' ? 'primary' : 'default'}}"
+        variant="{{chartType === 'bar' ? 'dark' : 'light'}}"
+        size="medium"
+        bind:click="onChartTypeTap"
+        data-type="bar"
+      >柱状图</t-tag>
+      <t-tag
+        theme="{{chartType === 'pie' ? 'primary' : 'default'}}"
+        variant="{{chartType === 'pie' ? 'dark' : 'light'}}"
+        size="medium"
+        bind:click="onChartTypeTap"
+        data-type="pie"
+      >饼图</t-tag>
+    </view>
+
+    <!-- 加载态 -->
+    <view wx:if="{{loading}}" class="loading-wrap">
+      <t-loading theme="spinner" size="64rpx" text="加载中..." />
+    </view>
+
+    <!-- 空态:当期还没有做菜记录 -->
+    <view wx:elif="{{empty}}" class="empty-wrap">
+      <t-empty description="这一期还没有做菜记录" />
+      <view class="empty-tip">去首页转一转吧</view>
+    </view>
+
+    <!-- 图表卡片 -->
+    <view wx:else class="card chart-card">
+      <bar-chart
+        wx:if="{{chartType === 'bar'}}"
+        data="{{barData}}"
+        unit="次"
+        bind:bartap="onBarTap"
+      />
+      <pie-chart wx:else data="{{pieData}}" />
+    </view>
+  </block>
+
+  <!-- 原料榜页签:含调料开关 + 排行列表(名次、名称、次数进度条) -->
+  <block wx:else>
+    <view class="ingredient-switch-row">
+      <text class="ingredient-switch-label">含调料</text>
+      <t-switch value="{{includeSeasoning}}" bind:change="onSeasoningChange" />
+    </view>
+
+    <!-- 加载态 -->
+    <view wx:if="{{loading}}" class="loading-wrap">
+      <t-loading theme="spinner" size="64rpx" text="加载中..." />
+    </view>
+
+    <!-- 空态 -->
+    <view wx:elif="{{ingredientList.length === 0}}" class="empty-wrap">
+      <t-empty description="这一期还没有做菜记录" />
+      <view class="empty-tip">去首页转一转吧</view>
+    </view>
+
+    <!-- 排行列表 -->
+    <view wx:else class="card ingredient-list">
+      <view class="ingredient-item" wx:for="{{ingredientList}}" wx:key="name">
+        <!-- 名次:前三名主色高亮 -->
+        <view class="ingredient-rank {{item.top ? 'ingredient-rank-top' : ''}}">{{item.rank}}</view>
+        <view class="ingredient-main">
+          <view class="ingredient-name-row">
+            <text class="ingredient-name">{{item.name}}</text>
+            <text class="ingredient-count">{{item.count}} 次</text>
+          </view>
+          <!-- 次数进度条:宽度百分比(相对最高次数),主色 -->
+          <view class="ingredient-bar">
+            <view class="ingredient-bar-fill" style="width: {{item.percent}}%"></view>
+          </view>
+        </view>
+      </view>
+    </view>
+  </block>
+
+  <!-- 统一轻提示 -->
+  <t-toast id="t-toast" />
+</view>

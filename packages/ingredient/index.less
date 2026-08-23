@@ -1,0 +1,70 @@
+/* 原料库管理页样式
+   设计基线:暖橙主色 #ff8c42、圆角卡片 .card、浅灰背景 #f5f6f7(见 app.less) */
+
+/* 顶部搜索框:与页面卡片风格一致,白底圆角 */
+.search-wrap {
+  margin-bottom: 24rpx;
+}
+
+/* 加载态 / 空态:垂直居中占位 */
+.loading-wrap,
+.empty-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 160rpx 0;
+}
+
+/* 列表卡片:压缩内边距让 cell 撑满,底部给固定按钮留出空间 */
+.list-card {
+  padding: 8rpx 24rpx;
+  margin-bottom: 180rpx;
+}
+
+/* 行标题:原料名 + 调料小标签并排 */
+.cell-title {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+}
+
+.cell-name {
+  font-size: 30rpx;
+  color: #333;
+}
+
+/* 行说明:被引用菜品次数 */
+.cell-usage {
+  font-size: 24rpx;
+  color: #999;
+}
+
+/* 行右侧删除按钮:浅红底、圆角 */
+.cell-delete {
+  font-size: 26rpx;
+  color: #e34d59;
+  background: #fdecee;
+  border-radius: 12rpx;
+  padding: 8rpx 20rpx;
+}
+
+/* 高亮行(新增已存在时定位):通过 CSS 变量覆盖 t-cell 根节点背景 */
+.cell-highlight {
+  --td-cell-bg-color: #fff3e0;
+}
+
+/* 弹层输入区:顶部留白,底部留按钮空间 */
+.dialog-input-wrap {
+  padding: 8rpx 0 24rpx;
+}
+
+/* 底部主按钮:固定屏幕底部,适配 iPhone 安全区 */
+.footer {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 16rpx 32rpx calc(16rpx + env(safe-area-inset-bottom));
+  background: #fff;
+  box-shadow: 0 -4rpx 16rpx rgba(0, 0, 0, 0.04);
+}

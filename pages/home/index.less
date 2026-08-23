@@ -1,0 +1,368 @@
+/* 首页样式
+   设计基线:暖橙主色 #ff8c42、圆角卡片 .card、浅灰背景 #f5f6f7(见 app.less) */
+
+/* ---------- 今日已定卡 ---------- */
+.today-card {
+  margin-bottom: 20rpx;
+}
+
+/* 卡片通用标题 */
+.card-title {
+  font-size: 30rpx;
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 16rpx;
+}
+
+/* 空态文案 */
+.today-empty {
+  padding: 8rpx 0;
+  font-size: 26rpx;
+  color: #999;
+}
+
+.today-list {
+  display: flex;
+  flex-direction: column;
+}
+
+/* 记录行:菜名 + 时间 + 撤销 */
+.today-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18rpx 0;
+  border-bottom: 2rpx solid #f5f6f7;
+}
+
+.today-row:last-child {
+  border-bottom: none;
+}
+
+.today-info {
+  display: flex;
+  align-items: baseline;
+  gap: 16rpx;
+  min-width: 0;
+}
+
+.today-name {
+  font-size: 30rpx;
+  font-weight: 500;
+  color: #333;
+}
+
+.today-time {
+  font-size: 24rpx;
+  color: #999;
+}
+
+/* 撤销文字按钮:暖橙色,点击区域放宽 */
+.today-undo {
+  padding: 8rpx 16rpx;
+  font-size: 26rpx;
+  color: #ff8c42;
+}
+
+/* ---------- 冰箱里有什么 ---------- */
+.fridge-card {
+  margin-bottom: 20rpx;
+}
+
+.fridge-search {
+  margin-bottom: 8rpx;
+}
+
+/* 小号搜索框:通过 t-class 压缩组件根高度与内边距 */
+.fridge-search-input {
+  height: 72rpx;
+  font-size: 26rpx;
+}
+
+/* 原料 chips:横向滚动,选中暖橙底白字 */
+.chip-scroll {
+  white-space: nowrap;
+}
+
+.chip-list {
+  display: inline-flex;
+  gap: 16rpx;
+  padding: 16rpx 4rpx;
+}
+
+.chip {
+  flex-shrink: 0;
+  padding: 10rpx 28rpx;
+  border-radius: 999rpx;
+  background: #fff;
+  color: #666;
+  font-size: 26rpx;
+  border: 2rpx solid #eee;
+}
+
+.chip-active {
+  background: #ff8c42;
+  border-color: #ff8c42;
+  color: #fff;
+}
+
+/* 无原料时提示 */
+.fridge-empty {
+  padding: 8rpx 0;
+  font-size: 26rpx;
+  color: #999;
+}
+
+/* ---------- 匹配结果区 ---------- */
+.match-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8rpx 4rpx 16rpx;
+}
+
+.match-title {
+  font-size: 32rpx;
+  font-weight: 600;
+  color: #333;
+}
+
+/* 模式切换:标签 + t-switch */
+.mode-row {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+}
+
+.mode-label {
+  font-size: 24rpx;
+  color: #666;
+}
+
+/* 分类入口 chips:未选原料时展示(全部/餐食/饮品),横向排列,选中暖橙(复用 .chip) */
+.match-cats {
+  display: flex;
+  gap: 16rpx;
+  margin-bottom: 20rpx;
+}
+
+/* 未搜索引导态:未选原料且未选分类时,文案居中引导 */
+.match-guide {
+  padding: 96rpx 0;
+  text-align: center;
+}
+
+.match-guide-text {
+  font-size: 28rpx;
+  color: #999;
+}
+
+/* 加载态 / 空态:垂直居中占位(首屏加载已改为骨架屏,.loading-wrap 保留供空态共用) */
+.loading-wrap,
+.empty-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 120rpx 0;
+}
+
+/* 首屏骨架屏容器:两个卡片上下排列,间距与真实卡片一致 */
+.skeleton-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 20rpx;
+}
+
+.skeleton-card {
+  padding: 24rpx;
+}
+
+.empty-action {
+  margin-top: 8rpx;
+}
+
+/* 匹配卡片流:风格与菜谱列表页一致 */
+.match-list {
+  display: flex;
+  flex-direction: column;
+  gap: 20rpx;
+}
+
+/* 菜品卡片:横向布局(左图右信息),点击有反馈 */
+.match-card {
+  display: flex;
+  gap: 24rpx;
+  align-items: center;
+  padding: 20rpx;
+}
+
+.match-card-hover {
+  opacity: 0.8;
+}
+
+/* 首图区域:固定方形圆角;无图时浅橙底显示分类 emoji 大字 */
+.dish-cover {
+  position: relative;
+  width: 140rpx;
+  height: 140rpx;
+  border-radius: 16rpx;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.dish-cover-img {
+  width: 100%;
+  height: 100%;
+}
+
+.dish-cover-emoji {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #fff1e6;
+  font-size: 64rpx;
+}
+
+/* 内置角标:左上角暖橙小标签 */
+.builtin-badge {
+  position: absolute;
+  top: 0;
+  left: 0;
+  padding: 4rpx 12rpx;
+  background: #ff8c42;
+  color: #fff;
+  font-size: 20rpx;
+  border-radius: 16rpx 0 16rpx 0;
+}
+
+/* 右侧信息区 */
+.dish-info {
+  flex: 1;
+  min-width: 0;
+}
+
+/* 菜名行:菜名 + 匹配度徽章 */
+.dish-name-row {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  margin-bottom: 12rpx;
+}
+
+.dish-name {
+  font-size: 30rpx;
+  font-weight: 600;
+  color: #333;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 匹配度百分比徽章:暖橙底白字胶囊 */
+.score-badge {
+  flex-shrink: 0;
+  font-size: 22rpx;
+  color: #fff;
+  background: #ff8c42;
+  border-radius: 999rpx;
+  padding: 4rpx 14rpx;
+}
+
+/* 原料名标签:小圆角浅灰底 */
+.dish-ingredients {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8rpx;
+  margin-bottom: 12rpx;
+}
+
+.ing-tag {
+  font-size: 22rpx;
+  color: #666;
+  background: #f5f6f7;
+  border-radius: 8rpx;
+  padding: 4rpx 12rpx;
+}
+
+.ing-more {
+  font-size: 22rpx;
+  color: #999;
+}
+
+/* 时间 / 难度小徽章:暖橙浅底 */
+.dish-meta {
+  display: flex;
+  gap: 12rpx;
+}
+
+.meta-badge {
+  font-size: 22rpx;
+  color: #ff8c42;
+  background: #fff1e6;
+  border-radius: 8rpx;
+  padding: 4rpx 12rpx;
+}
+
+/* 翻页 footer */
+.list-footer {
+  padding: 24rpx 0;
+  text-align: center;
+  font-size: 24rpx;
+  color: #999;
+}
+
+/* ---------- 转盘入口按钮:暖橙底白字;候选为空时置灰不可点 ---------- */
+.wheel-btn {
+  margin-top: 24rpx;
+  height: 96rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 24rpx;
+  font-size: 30rpx;
+  font-weight: 500;
+  background: #ff8c42;
+  color: #fff;
+  box-shadow: 0 4rpx 16rpx rgba(255, 140, 66, 0.25);
+}
+
+.wheel-btn-disabled {
+  background: #eee;
+  color: #aaa;
+  box-shadow: none;
+}
+
+/* ---------- 转盘半屏弹层:白色背景,顶部圆角(popup bottom 自带圆角) ---------- */
+.wheel-popup {
+  padding: 32rpx 32rpx calc(32rpx + env(safe-area-inset-bottom));
+  background: #fff;
+}
+
+/* 弹层头部:标题 + 候选数 */
+.wheel-popup-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 0 4rpx 8rpx;
+}
+
+.wheel-popup-title {
+  font-size: 32rpx;
+  font-weight: 600;
+  color: #333;
+}
+
+.wheel-popup-count {
+  font-size: 24rpx;
+  color: #999;
+}
+
+/* 底部提示文案 */
+.wheel-popup-tip {
+  margin-top: 16rpx;
+  text-align: center;
+  font-size: 22rpx;
+  color: #999;
+}

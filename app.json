@@ -1,0 +1,50 @@
+{
+  "pages": ["pages/home/index", "pages/menu/index", "pages/stats/index", "pages/more/index"],
+  "subpackages": [
+    {
+      "root": "packages/ingredient",
+      "name": "ingredient",
+      "pages": ["index"]
+    },
+    {
+      "root": "packages/dish",
+      "name": "dish",
+      "pages": ["detail", "edit"]
+    }
+  ],
+  "usingComponents": {
+    "t-toast": "tdesign-miniprogram/toast/toast"
+  },
+  "window": {
+    "backgroundTextStyle": "light",
+    "navigationBarBackgroundColor": "#fff",
+    "navigationBarTitleText": "今天吃什么",
+    "navigationBarTextStyle": "black"
+  },
+  "tabBar": {
+    "custom": true,
+    "list": [
+      {
+        "pagePath": "pages/home/index",
+        "text": "首页"
+      },
+      {
+        "pagePath": "pages/menu/index",
+        "text": "菜谱"
+      },
+      {
+        "pagePath": "pages/stats/index",
+        "text": "统计"
+      },
+      {
+        "pagePath": "pages/more/index",
+        "text": "更多"
+      }
+    ]
+  },
+  "resolveAlias": {
+    "~/*": "/*"
+  },
+  "lazyCodeLoading": "requiredComponents",
+  "sitemapLocation": "sitemap.json"
+}
