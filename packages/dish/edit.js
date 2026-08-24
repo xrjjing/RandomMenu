@@ -304,8 +304,14 @@ Page({
     const ingredients = this.data.ingredients.concat([
       { id: '', name, amount: '', isSeasoning: SEASONING_SET.has(name) },
     ]);
-    this.setData({ ingredients });
-    this.syncCandidateChecked(ingredients);
+    // 关弹层 + 清搜索词 + toast 反馈:一次 setData 完成状态收尾,避免弹层残留与无反馈
+    this.setData({ ingredients, popupVisible: false, searchKw: '' });
+    this.onShowToast('#t-toast', `已添加「${name}」`);
+  },
+
+  /** 「完成」按钮 / 标题 ✕ 关闭:收口弹层,关弹层 + 清搜索词(与即时新增收尾一致) */
+  onIngredientDone() {
+    this.setData({ popupVisible: false, searchKw: '' });
   },
 
   /** 刷新候选列表 checked 状态(与已选保持一致) */

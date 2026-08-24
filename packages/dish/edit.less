@@ -231,7 +231,7 @@
   z-index: 10;
 }
 
-/* 原料选择弹层:标题 + 搜索 + 滚动候选列表 */
+/* 原料选择弹层:标题 + 搜索 + 滚动候选列表 + 底部完成按钮 */
 .ingredient-popup {
   padding: 32rpx 32rpx calc(32rpx + env(safe-area-inset-bottom));
   max-height: 70vh;
@@ -239,11 +239,34 @@
   flex-direction: column;
 }
 
+/* 标题栏:标题 + 右侧 ✕ 关闭(暖橙 ×,点击区 ≥80rpx 适配长辈) */
+.popup-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20rpx;
+}
+
 .popup-title {
   font-size: 32rpx;
   font-weight: 600;
   color: #333;
-  margin-bottom: 20rpx;
+}
+
+.popup-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 80rpx;
+  height: 80rpx;
+  margin-right: -16rpx;
+  font-size: 36rpx;
+  color: #ff8c42;
+  border-radius: 16rpx;
+}
+
+.popup-close-hover {
+  background: #fff1e6;
 }
 
 /* 搜索无结果:即时新增入口,暖橙文字 */
@@ -258,6 +281,11 @@
   flex: 1;
   min-height: 300rpx;
   max-height: 50vh;
+}
+
+/* 底部完成按钮:与列表间留间距,弹层自身已含 safe-area 内边距 */
+.popup-footer {
+  padding-top: 24rpx;
 }
 
 /* 右侧勾选标记:选中时暖橙实心 */

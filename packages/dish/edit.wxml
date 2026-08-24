@@ -163,7 +163,11 @@
     bind:visible-change="onPopupVisibleChange"
   >
     <view class="ingredient-popup">
-      <view class="popup-title">选择原料</view>
+      <view class="popup-header">
+        <view class="popup-title">选择原料</view>
+        <!-- 标题栏关闭:与「完成」等价(关弹层 + 清搜索词),交互与转盘弹层一致 -->
+        <view class="popup-close" hover-class="popup-close-hover" bind:tap="onIngredientDone">✕</view>
+      </view>
       <t-search
         value="{{searchKw}}"
         placeholder="搜索原料"
@@ -188,6 +192,10 @@
           <view slot="right-icon" class="check-icon {{item.checked ? 'check-icon-on' : ''}}">{{item.checked ? '✓' : ''}}</view>
         </t-cell>
       </scroll-view>
+      <!-- 底部收口:显式「完成」按钮,文案带已选数,一眼看到勾了几个 -->
+      <view class="popup-footer">
+        <t-button block theme="primary" bind:tap="onIngredientDone">完成（{{ingredients.length}}）</t-button>
+      </view>
     </view>
   </t-popup>
 
