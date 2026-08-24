@@ -269,12 +269,29 @@
   background: #fff1e6;
 }
 
-/* 搜索无结果:即时新增入口,暖橙文字 */
+/* 搜索无结果:即时新增入口,暖橙文字;整行点击=新增,右侧「设为调料」独立勾选区 */
 .quick-add {
-  padding: 24rpx 8rpx;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16rpx;
+  padding: 16rpx 8rpx;
+  border-bottom: 2rpx solid #f5f6f7;
+}
+
+.quick-add-text {
+  flex: 1;
   font-size: 28rpx;
   color: #ff8c42;
-  border-bottom: 2rpx solid #f5f6f7;
+}
+
+/* 调料勾选区:独立点击区(catch:tap 阻断冒泡,不触发整行新增);
+   压缩 t-checkbox 默认 32rpx 垂直内边距,贴合行高 */
+.quick-add-seasoning {
+  flex-shrink: 0;
+  padding: 8rpx 0;
+  --td-checkbox-vertical-padding: 8rpx;
+  --td-checkbox-font-size: 26rpx;
 }
 
 .popup-list {

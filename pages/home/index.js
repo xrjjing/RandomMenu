@@ -35,10 +35,27 @@ import {
   DISH_CARD_FIELDS,
 } from '../../api/db.js';
 import { SEASONING_SET } from '../../utils/seasonings.js';
+import { normalizeName } from '../../utils/normalize.js';
 import { orderDishImages } from '../../utils/image.js';
 
 /** 每页条数(与云数据库客户端单次 limit 上限一致) */
 const PAGE_SIZE = 20;
+
+/**
+ * 纯函数:关键词模糊匹配(菜名 或 原料名 包含关键词)。
+ * 纯前端内存操作,基于首页全量快照;关键词已由调用方归一化(utils/normalize.js)。
+ * 不做拼音(任务书明确不做);中文名包含匹配即可。
+ * @param {Array} dishes 菜品全量快照(fetchAllDishes 结果)
+ * @param {string} kw 已归一化的关键词
+ * @returns {Array} 命中的菜品数组(保持快照原顺序)
+ */
+function matchDishesByKeyword(dishes, kw) {
+  if (!Array.isArray(dishes) || !kw) return [];
+  return dishes.filter((dish) => {
+    if (dish.name && dish.name.includes(kw)) return true;
+    return (dish.ingredientNames || []).some((name) => name.includes(kw));
+  });
+}
 
 /** 服务端时间格式化为本地 HH:mm(今日已定列表展示用) */
 function formatHHmm(value) {
@@ -66,7 +83,8 @@ Page({
       [{ width: '160rpx', height: '56rpx' }, { width: '160rpx', height: '56rpx' }, { width: '160rpx', height: '56rpx' }],
     ],
     today: [], // 今日已定列表:{_id, dishName, time}
-    ingredientKeyword: '', // 冰箱原料搜索关键字
+    ingredientKeyword: '', // 冰箱原料搜索关键字(同时作为菜名/原料名模糊搜索词)
+    hasDishKeyword: false, // 搜索框是否有非空关键词(归一化后),wxml 引导态判定用
     ingredientChips: [], // 冰箱原料 chips:{name, active}(已排除调料)
     selectedNames: [], // 已选原料名
     completeMode: false, // 匹配模式:false 有交集即可 | true 完全匹配
@@ -147,7 +165,8 @@ Page({
       const dishes = await fetchAllDishes({ force: true });
       this.dishesSnapshot = dishes;
       this.dishesSnapshotDirty = false;
-      if (this.data.selectedNames.length > 0) {
+      // 快照就绪后重跑匹配:已选原料 或 有关键词搜索时兜底渲染(用户在快照加载期间已触发的匹配)
+      if (this.data.selectedNames.length > 0 || this.data.hasDishKeyword) {
         this.refreshMatch(this.nextSeq(), true);
       }
     } catch (err) {
@@ -214,19 +233,24 @@ Page({
 
   /* ---------------- 冰箱里有什么 ---------------- */
 
-  /** 搜索输入:防抖 300ms 后按关键字重查原料 chips */
+  /** 搜索输入:防抖 300ms 后重查原料 chips + 刷新匹配结果(菜名/原料名模糊搜索)。
+   *  关键词非空时,匹配结果 = 词命中菜(∩ 已选原料命中菜);清空回到原 chips/分类逻辑 */
   onIngredientSearch(e) {
     const keyword = (e.detail.value || '').trim();
-    this.setData({ ingredientKeyword: keyword });
+    this.setData({ ingredientKeyword: keyword, hasDishKeyword: normalizeName(keyword).length > 0 });
     if (this.searchTimer) clearTimeout(this.searchTimer);
-    this.searchTimer = setTimeout(() => this.loadIngredients(keyword), 300);
+    this.searchTimer = setTimeout(() => {
+      this.loadIngredients(keyword);
+      this.refreshMatch(this.nextSeq(), false);
+    }, 300);
   },
 
-  /** 点击清除图标:立即恢复全量原料 chips */
+  /** 点击清除图标:立即恢复全量原料 chips,并回到无关键词匹配逻辑 */
   onIngredientSearchClear() {
     if (this.searchTimer) clearTimeout(this.searchTimer);
-    this.setData({ ingredientKeyword: '' });
+    this.setData({ ingredientKeyword: '', hasDishKeyword: false });
     this.loadIngredients('');
+    this.refreshMatch(this.nextSeq(), false);
   },
 
   /** 加载原料 chips:排除调料(isSeasoning);已选原料保证可见(过滤结果外补到尾部)。
@@ -307,8 +331,11 @@ Page({
    * - 未选原料但已选分类:listDishes 按分类浏览(新增 category 条件),支持触底翻页
    */
   async refreshMatch(seq, silent) {
-    // 未搜索引导态:不查询、不展示列表;loading 由 init 在其他数据到位后统一关闭
-    if (this.data.selectedNames.length === 0 && !this.data.matchSearched) {
+    // 关键词(菜名/原料名模糊搜索):归一化后非空即进入关键词分支;为空走原 chips/分类逻辑
+    const kw = normalizeName(this.data.ingredientKeyword);
+    const hasKw = kw.length > 0;
+    // 未搜索引导态:无关键词、未选原料且未选分类:不查询、不展示列表;loading 由 init 在其他数据到位后统一关闭
+    if (!hasKw && this.data.selectedNames.length === 0 && !this.data.matchSearched) {
       if (seq !== this.requestSeq) return;
       this.setData({
         matchList: [],
@@ -321,9 +348,9 @@ Page({
       });
       return;
     }
-    // 已选原料但快照未就绪(首次加载 / 下拉刷新中):loading 兜底,
+    // 关键词搜索或已选原料需要内存快照;快照未就绪(首次加载 / 下拉刷新中):loading 兜底,
     // 快照就绪后 refreshDishesSnapshot 会自动重跑匹配(此处 return 在 try 之前,避免 finally 复位 loading)
-    if (this.data.selectedNames.length > 0 && !this.dishesSnapshot) {
+    if ((hasKw || this.data.selectedNames.length > 0) && !this.dishesSnapshot) {
       if (seq !== this.requestSeq) return;
       this.setData({ loading: true });
       return;
@@ -336,7 +363,22 @@ Page({
     let wheelDisabled = true;
     try {
       const selected = this.data.selectedNames;
-      if (selected.length > 0) {
+      if (hasKw) {
+        // 关键词匹配:菜名或原料名包含关键词(归一化后);已选原料 chips 非空时再取交集
+        let dishes = matchDishesByKeyword(this.dishesSnapshot, kw);
+        if (selected.length > 0) {
+          const selectedDishes = matchDishesByIngredients(this.dishesSnapshot, selected, {
+            mode: this.data.completeMode ? 'complete' : 'partial',
+          });
+          const kwIds = new Set(dishes.map((dish) => dish._id));
+          dishes = selectedDishes.filter((dish) => kwIds.has(dish._id));
+          cards = this.buildMatchCards(dishes, true);
+        } else {
+          cards = this.buildMatchCards(dishes, false);
+        }
+        emptyText = '没有找到相关菜品';
+        wheelDisabled = cards.length === 0; // 候选为空时禁用转盘入口
+      } else if (selected.length > 0) {
         // 内存快照匹配(0ms):直查架构下全量已在快照中,避免每次点原料打库
         const dishes = matchDishesByIngredients(this.dishesSnapshot, selected, {
           mode: this.data.completeMode ? 'complete' : 'partial',
@@ -498,7 +540,9 @@ Page({
    */
   async openWheel() {
     let list = this.data.matchList;
-    if (this.data.selectedNames.length === 0) {
+    // 已选原料或关键词搜索时, matchList 已是内存全量结果(非分页),直接作为转盘候选;
+    // 仅「未选原料且无关键词」的分类浏览场景 matchList 才只是第一页,需循环拉全量
+    if (this.data.selectedNames.length === 0 && !this.data.hasDishKeyword) {
       try {
         list = await this.fetchAllDishesForWheel();
       } catch (err) {

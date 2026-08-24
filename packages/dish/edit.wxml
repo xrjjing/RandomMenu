@@ -174,9 +174,17 @@
         shape="round"
         bind:change="onIngredientSearch"
       />
-      <!-- 搜索无结果:即时新增入口(不必先落库,保存时 saveDish 统一 ensure) -->
+      <!-- 搜索无结果:即时新增入口(不必先落库,保存时 saveDish 统一 ensure)。
+           整行点击=新增;右侧「设为调料」勾选为独立区域(catch:tap 阻断冒泡,勾选不触发新增) -->
       <view wx:if="{{searchKw && ingredientCandidates.length === 0}}" class="quick-add" bind:tap="onQuickAddIngredient">
-        ＋ 新增原料"{{searchKw}}"
+        <view class="quick-add-text">＋ 新增原料"{{searchKw}}"</view>
+        <view class="quick-add-seasoning" catch:tap="onQuickAddSeasoningTap">
+          <t-checkbox
+            checked="{{quickAddIsSeasoning}}"
+            label="设为调料"
+            bind:change="onQuickAddSeasoningChange"
+          />
+        </view>
       </view>
       <scroll-view scroll-y class="popup-list">
         <t-cell

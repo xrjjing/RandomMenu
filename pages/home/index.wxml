@@ -21,7 +21,7 @@
     <view class="fridge-search">
       <t-search
         value="{{ingredientKeyword}}"
-        placeholder="搜索原料"
+        placeholder="搜菜名 / 原料"
         shape="round"
         t-class="fridge-search-input"
         bind:change="onIngredientSearch"
@@ -68,8 +68,8 @@
     </view>
   </view>
 
-  <!-- 未搜索引导态:未选原料且未选分类时,不展示菜品列表,仅文案引导 + 分类入口 -->
-  <view wx:elif="{{selectedNames.length === 0 && !matchSearched}}" class="match-guide">
+  <!-- 未搜索引导态:无关键词、未选原料且未选分类时,不展示菜品列表,仅文案引导 + 分类入口 -->
+  <view wx:elif="{{selectedNames.length === 0 && !matchSearched && !hasDishKeyword}}" class="match-guide">
     <view class="match-guide-text">选择原料，或让我们抽一个</view>
   </view>
 

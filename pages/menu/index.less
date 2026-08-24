@@ -207,7 +207,9 @@
 .fab-add {
   position: fixed;
   right: 32rpx;
-  bottom: calc(48rpx + env(safe-area-inset-bottom));
+  /* 避让底部自定义 tabBar(约 112rpx + 安全区):原 48rpx 会被浮层式 tabBar 盖住一半,
+     改与首页转盘按钮同基准 200rpx(真机验证过的避让值),保证完整可见、可点 */
+  bottom: calc(200rpx + env(safe-area-inset-bottom));
   width: 108rpx;
   height: 108rpx;
   border-radius: 50%;

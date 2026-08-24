@@ -57,6 +57,7 @@ Page({
     steps: [{ id: 0, text: '' }], // 做法步骤 [{id, text}]
     popupVisible: false, // 原料选择弹层
     searchKw: '', // 原料搜索关键字
+    quickAddIsSeasoning: false, // 即时新增默认调料标记(搜索词变化时按调料表重算,用户可手动改)
     ingredientCandidates: [], // 原料搜索结果(带 checked 标记)
     duplicateVisible: false, // 重名确认弹窗
   },
@@ -256,10 +257,11 @@ Page({
     if (!e.detail.visible) this.setData({ popupVisible: false });
   },
 
-  /** 原料搜索输入:防抖 300ms 后模糊过滤 */
+  /** 原料搜索输入:防抖 300ms 后模糊过滤;每次搜索词变化重算「设为调料」默认值
+   *  (调料表命中默认勾上,用户可手动改,onQuickAddIngredient 使用该值) */
   onIngredientSearch(e) {
     const kw = (e.detail.value || '').trim();
-    this.setData({ searchKw: kw });
+    this.setData({ searchKw: kw, quickAddIsSeasoning: SEASONING_SET.has(normalizeName(kw)) });
     if (this.searchTimer) clearTimeout(this.searchTimer);
     this.searchTimer = setTimeout(() => this.searchIngredients(kw), 300);
   },
@@ -297,17 +299,27 @@ Page({
     this.syncCandidateChecked(ingredients);
   },
 
-  /** 搜索无结果「➕ 新增原料」:即时加入已选(保存时 saveDish 内部 ensureIngredient 统一落库) */
+  /** 搜索无结果「➕ 新增原料」:即时加入已选(保存时 saveDish 内部 ensureIngredient 统一落库)。
+   *  isSeasoning 优先取弹层里「设为调料」勾选值,未显式操作时回退调料表命中判断 */
   onQuickAddIngredient() {
     const name = normalizeName(this.data.searchKw);
     if (!name || this.data.ingredients.some((ing) => ing.name === name)) return;
+    const isSeasoning = this.data.quickAddIsSeasoning ?? SEASONING_SET.has(name);
     const ingredients = this.data.ingredients.concat([
-      { id: '', name, amount: '', isSeasoning: SEASONING_SET.has(name) },
+      { id: '', name, amount: '', isSeasoning },
     ]);
-    // 关弹层 + 清搜索词 + toast 反馈:一次 setData 完成状态收尾,避免弹层残留与无反馈
-    this.setData({ ingredients, popupVisible: false, searchKw: '' });
+    // 关弹层 + 清搜索词 + 清调料标记 + toast 反馈:一次 setData 完成状态收尾,避免弹层残留与无反馈
+    this.setData({ ingredients, popupVisible: false, searchKw: '', quickAddIsSeasoning: false });
     this.onShowToast('#t-toast', `已添加「${name}」`);
   },
+
+  /** 「设为调料」勾选变化:仅更新标记,不触发新增 */
+  onQuickAddSeasoningChange(e) {
+    this.setData({ quickAddIsSeasoning: !!e.detail.checked });
+  },
+
+  /** 调料勾选区点击占位:catch:tap 阻断冒泡,避免勾选时误触整行「新增原料」 */
+  onQuickAddSeasoningTap() {},
 
   /** 「完成」按钮 / 标题 ✕ 关闭:收口弹层,关弹层 + 清搜索词(与即时新增收尾一致) */
   onIngredientDone() {

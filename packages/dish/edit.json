@@ -10,6 +10,7 @@
     "t-picker-item": "tdesign-miniprogram/picker-item/picker-item",
     "t-popup": "tdesign-miniprogram/popup/popup",
     "t-search": "tdesign-miniprogram/search/search",
+    "t-checkbox": "tdesign-miniprogram/checkbox/checkbox",
     "t-cell": "tdesign-miniprogram/cell/cell",
     "t-textarea": "tdesign-miniprogram/textarea/textarea",
     "t-dialog": "tdesign-miniprogram/dialog/dialog",
