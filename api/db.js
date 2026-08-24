@@ -2,15 +2,20 @@
  * api/db.js
  * 云数据库统一封装(零云函数,小程序端直连)
  * 所有页面只 import 本模块操作 dishes / ingredients,不散落 wx.cloud 调用。
- * 三层缓存:内存(queryCache TTL)→ wx.Storage(storageCache 持久)→ 云数据库(源头)。
- * 读流程统一走 loadCollection 三段读取;写流程统一 markDirty 双清 + 重拉回填 L2,
- * 保证"改了就能看到",且命中缓存时不再重打库。
+ * 双层缓存(L1 内存 queryCache → L2 wx.Storage storageCache)+ TTL,规则一句话:
+ * 「用户可见的整页刷新时机强制直查(force);页面内连续交互走缓存」——
+ * - 页面内交互(搜索防抖/筛选/翻页)命中 L1(60s)→ L2(5min)→ L3,逐层回填;
+ * - 整页刷新(onShow / 下拉刷新 / 进入页面)由页面传 force=true 强制穿透直达云库,成功后回填两层;
+ * - 写操作(saveDish/removeDish/ensureIngredient/rename/removeIngredient/addCookRecord)
+ *   成功后 markDirty 本机两层(下次读走 L3),本机写后立读最新;
+ * - 单条详情(getDish)与 records 读取(todayRecords/statsAggregate)不走集合缓存,维持直查。
+ * 首页「点原料→匹配」用内存快照(dishesSnapshot)兜底交互速度,见 pages/home/index.js。
  * 注意:wx 引用一律放在函数内部,保证在 node 环境下 import 本文件不抛错。
  */
 import { escapeRegExp, normalizeName } from '../utils/normalize.js';
 import { SEASONING_SET } from '../utils/seasonings.js';
-import { queryCache } from '../utils/queryCache.js';
 import { isCloudFileId } from '../utils/image.js';
+import { queryCache } from '../utils/queryCache.js';
 import * as storageCache from '../utils/storageCache.js';
 // 单向依赖:upload.js 只 import data/builtin-dishes.js,不依赖本模块,无循环引用(seed.js 已同款并存)
 import { loadBuiltinImageMap } from './upload.js';
@@ -18,8 +23,10 @@ import { loadBuiltinImageMap } from './upload.js';
 /** 小程序端单次查询上限(客户端 limit 最大 20,超出需 skip 分页) */
 const PAGE_SIZE = 20;
 
-/** L1 内存缓存 TTL:默认 30s(loadCollection 的 ttlMs 参数,同一个人反复点时的额外优化) */
-const CACHE_TTL = { LIST: 30 * 1000 };
+/** L1 内存缓存 TTL(进程内页面交互,60 秒) */
+const L1_TTL_MS = 60 * 1000;
+/** L2 Storage 缓存 TTL(跨启动持久,5 分钟) */
+const L2_TTL_MS = 5 * 60 * 1000;
 
 /** 卡片流列表查询字段投影(不含 steps/ingredients 等大字段,减小列表查询载荷) */
 export const DISH_CARD_FIELDS = [
@@ -59,73 +66,65 @@ async function fetchAll(collectionName, where = {}) {
   return list;
 }
 
-/** 内部:L3 数据源——拉取 dishes 集合全量(供 loadCollection / refreshCollection 使用) */
-async function fetchAllDishes() {
-  return fetchAll('dishes');
+/**
+ * 拉取 dishes 集合全量(走集合缓存;force=true 强制穿透直查并回填两层)。
+ * 首页匹配快照、listDishes 底层共用同一缓存单元 'dishes'。
+ * @param {object} [opts]
+ * @param {boolean} [opts.force=false] 是否强制穿透缓存直接查云库(整页刷新时机用)
+ * @returns {Promise<Array>} 全部菜品文档
+ */
+export async function fetchAllDishes({ force = false } = {}) {
+  return loadCollection('dishes', () => fetchAll('dishes'), { force });
 }
 
-/** 内部:L3 数据源——拉取 ingredients 集合全量(供 loadCollection / refreshCollection 使用) */
+/** 内部:拉取 ingredients 集合全量(供 loadCollection 使用) */
 async function fetchAllIngredients() {
   return fetchAll('ingredients');
 }
 
 /**
- * 三段读取(L1 内存 → L2 Storage → L3 云库),命中即返回并回填上一层,不重打库。
- * @param {string} name 缓存单元名(如 'dishes'/'ingredients'/'records:2026-08-23';storage 键自动加 rmdc_ 前缀)
- * @param {Function} fetcher L3 拉取函数,返回 Promise<Array>
+ * 双层缓存读取:L1 内存(queryCache,60s)→ L2 Storage(storageCache,5min)→ L3 云库,逐层回填。
+ * force=true 时跳过 L1/L2 直接查云库,成功后回填两层(整页刷新时机用)。
+ * @param {string} name 缓存单元名(集合名,如 'dishes' / 'ingredients')
+ * @param {Function} fetcher 拉取函数,返回 Promise<Array>
  * @param {object} [opts]
- * @param {number} [opts.ttlMs=CACHE_TTL.LIST] L1 内存 TTL(同一个人反复点时的额外优化;L2 持久层不设 TTL)
+ * @param {boolean} [opts.force=false] 是否强制穿透缓存直接查云库
+ * @param {number} [opts.ttlMs=60000] L1 内存缓存 TTL(毫秒)
  * @returns {Promise<Array>} 文档数组(浅拷贝,调用方可安全排序/过滤)
  */
-async function loadCollection(name, fetcher, { ttlMs = CACHE_TTL.LIST } = {}) {
-  // L1:内存缓存(进程内 TTL)
+async function loadCollection(name, fetcher, { force = false, ttlMs = L1_TTL_MS } = {}) {
   const memKey = queryCache.keyOf(['collection', name]);
-  const mem = queryCache.get(memKey);
-  if (mem) return mem;
-  // L2:本地持久缓存(跨启动有效,首屏 onLaunch 预热后页面读这里加速)
-  const local = storageCache.get(name);
-  if (local) {
-    queryCache.set(memKey, local, ttlMs);
-    return local;
+  if (!force) {
+    // L1 内存命中:进程内 TTL 内不重复打库(queryCache.get 已返回浅拷贝)
+    const l1 = queryCache.get(memKey);
+    if (l1) return l1;
+    // L2 Storage 命中:回填 L1(逐层回填,不重打库)
+    const l2 = storageCache.get(name, L2_TTL_MS);
+    if (l2) {
+      queryCache.set(memKey, l2, ttlMs);
+      return l2;
+    }
   }
-  // L3:云数据库(源头),成功后回填 L2 + L1
+  // L3 云库:成功后回填 L1 + L2
   const list = await fetcher();
-  storageCache.set(name, list);
   queryCache.set(memKey, list, ttlMs);
+  storageCache.set(name, list);
   return list.slice();
 }
 
 /**
- * 写库后一致性失效:清 L1 内存 + L2 Storage(同名前缀)。
- * 调用方随后应 refreshCollection 重拉最新数据回填 L2,保证"改了就能看到"。
- * @param {string[]} [collectionNames] 需要失效的缓存单元名数组;缺省清空全部 rmdc_ 键
+ * 内部:写库成功后失效缓存(本机 L1 内存全清 + L2 Storage 按集合删除)。
+ * 下次读取(force=false)缓存未命中即走 L3 拉最新,保证本机写后立读最新。
+ * @param {string[]} [collectionNames] 需失效的 L2 集合名(如 ['dishes','ingredients']);
+ *   缺省则清空全部 rmdc_ 前缀键
  */
 function markDirty(collectionNames) {
-  // L1:内存缓存条目少,全清最可靠
+  // L1 全清:家庭量级缓存条目有限,全清最简单可靠
   queryCache.markDirty();
-  // L2:按集合名清(缺省全清),下次读对应集合时走 L3 拉最新
-  if (Array.isArray(collectionNames) && collectionNames.length) {
+  if (collectionNames && collectionNames.length) {
     collectionNames.forEach((name) => storageCache.remove(name));
   } else {
     storageCache.clearAll();
-  }
-}
-
-/**
- * 重拉某缓存单元全量并回填 L2(写后同步三层:以 L3 为源覆盖 L2)。
- * 失败仅 console.error 降级:L2 为空,下次读自动走 L3 拉取,不阻断业务。
- * @param {string} name 缓存单元名(同 loadCollection)
- * @param {Function} fetcher L3 拉取函数
- * @returns {Promise<Array|null>} 回填的数据;失败返回 null
- */
-async function refreshCollection(name, fetcher) {
-  try {
-    const list = await fetcher();
-    storageCache.set(name, list);
-    return list;
-  } catch (err) {
-    console.error(`[db] refreshCollection 回填 ${name} 失败(降级)`, err);
-    return null;
   }
 }
 
@@ -165,12 +164,11 @@ async function redirectDishIngredients(oldName, oldId, newId, newName) {
 /**
  * 确保原料存在:按归一化名称查重,库内已有则直接返回,否则插入。
  * 调料标记 isSeasoning 落库:显式传入时以传入值为准,否则按 SEASONING_SET 判断。
- * 独立调用(原料库新增)时 sync=true:写库后 markDirty + 重拉回填 L2,立即可见;
- * saveDish / seed 批量导入内部调用传 { sync: false },由外层统一同步,避免循环内反复拉全量。
+ * 双层缓存:写库成功后 markDirty 本机两层,调用方再次读取自然拿到最新数据。
  * @param {string} name 原料名(未归一化也可)
  * @param {boolean} [isSeasoning] 是否调料;缺省时按调料集合判断
  * @param {object} [opts]
- * @param {boolean} [opts.sync=true] 是否立即同步三层缓存
+ * @param {boolean} [opts.sync=true] 兼容参数(历史控制写后同步,现在写库统一 markDirty;保留避免改动调用方)
  * @returns {Promise<{_id: string, name: string, isNew: boolean, isSeasoning: boolean}>}
  */
 export async function ensureIngredient(name, isSeasoning, { sync = true } = {}) {
@@ -179,11 +177,13 @@ export async function ensureIngredient(name, isSeasoning, { sync = true } = {}) 
   const col = db.collection('ingredients');
   const exist = await col.where({ name: normalized }).limit(1).get();
   let result;
+  let wrote = false; // 是否真正写库(存在且无变更时不清缓存)
   if (exist.data.length > 0) {
     const doc = exist.data[0];
     // 显式传入标记且与库内不一致时补齐,保证调料标记落库一致
     if (isSeasoning != null && doc.isSeasoning !== Boolean(isSeasoning)) {
       await col.doc(doc._id).update({ data: { isSeasoning: Boolean(isSeasoning) } });
+      wrote = true;
     }
     let finalSeasoning = SEASONING_SET.has(normalized);
     if (doc.isSeasoning != null) {
@@ -198,23 +198,23 @@ export async function ensureIngredient(name, isSeasoning, { sync = true } = {}) 
       data: { name: normalized, isSeasoning: finalSeasoning, createdAt: db.serverDate() },
     });
     result = { _id: added._id, name: normalized, isNew: true, isSeasoning: finalSeasoning };
+    wrote = true;
   }
-  // 写库后同步三层:原料集合变化,清缓存并重拉回填 L2
-  if (sync) {
-    markDirty(['ingredients']);
-    await refreshCollection('ingredients', fetchAllIngredients);
-  }
+  // 写库成功:本机两层缓存失效,下次读取走 L3 拿最新
+  if (wrote) markDirty(['ingredients']);
   return result;
 }
 
 /**
  * 原料模糊查询:名称正则匹配(忽略大小写);kw 为空返回全部。
- * 读全量缓存(L1/L2/L3 三段),JS 层过滤,避免按关键字重复打库。
+ * 走集合缓存(force=true 强制穿透);直查全量后 JS 层过滤,避免按关键字重复打库。
  * @param {string} [kw=''] 查询关键字
+ * @param {object} [opts]
+ * @param {boolean} [opts.force=false] 是否强制穿透缓存直接查云库(进入页面/整页刷新时机用)
  * @returns {Promise<Array>} 原料文档数组
  */
-export async function listIngredients(kw = '') {
-  const all = await loadCollection('ingredients', fetchAllIngredients);
+export async function listIngredients(kw = '', { force = false } = {}) {
+  const all = await loadCollection('ingredients', fetchAllIngredients, { force });
   if (!kw) return all;
   const re = new RegExp(escapeRegExp(kw), 'i');
   return all.filter((d) => re.test(d.name || ''));
@@ -224,7 +224,7 @@ export async function listIngredients(kw = '') {
  * 原料重命名。
  * 撞名(新名称已存在)时:dishes 中的旧引用改指既有原料,随后删除旧原料;
  * 未撞名:直接改名,并同步 dishes 中冗余的 ingredientNames。
- * 写库后同步三层:重命名影响 ingredients + dishes(冗余 ingredientNames)。
+ * 双层缓存:写库成功后 markDirty 本机两层,下次读取自然拿到最新。
  * @param {string} id 原料 _id
  * @param {string} newName 新名称
  * @returns {Promise<{_id: string, name: string, merged: boolean}>}
@@ -250,15 +250,14 @@ export async function renameIngredient(id, newName) {
     await col.doc(id).update({ data: { name: normalized } });
     result = { _id: id, name: normalized, merged: false };
   }
+  // 写库成功:原料与菜品冗余字段都可能变化,两层缓存一并失效
   markDirty(['ingredients', 'dishes']);
-  await refreshCollection('ingredients', fetchAllIngredients);
-  await refreshCollection('dishes', fetchAllDishes);
   return result;
 }
 
 /**
  * 删除原料:仅解除 dishes 中的引用(ingredientIds / ingredientNames),不删除菜品。
- * 写库后同步三层:删除影响 ingredients + dishes。
+ * 双层缓存:写库成功后 markDirty 本机两层,下次读取自然拿到最新。
  * @param {string} id 原料 _id
  * @returns {Promise<{removed: boolean, affectedDishes: number}>}
  */
@@ -278,9 +277,8 @@ export async function removeIngredient(id) {
     });
   }
   await col.doc(id).remove();
+  // 写库成功:原料与菜品冗余字段都可能变化,两层缓存一并失效
   markDirty(['ingredients', 'dishes']);
-  await refreshCollection('ingredients', fetchAllIngredients);
-  await refreshCollection('dishes', fetchAllDishes);
   return { removed: true, affectedDishes: dishes.length };
 }
 
@@ -305,8 +303,8 @@ export async function ingredientUsage() {
 
 /**
  * 菜品列表:分类过滤 + 关键字三字段模糊 + 按更新时间倒序分页。
- * 读全量缓存后 JS 端过滤/排序/分页(等价原数据库 where + orderBy,家庭量级无压力),
- * 与 getDish / searchDishesByIngredients 共用同一份 dishes 缓存。
+ * 走集合缓存(force=true 强制穿透);直查全量后 JS 端过滤/排序/分页
+ * (等价原数据库 where + orderBy,家庭量级无压力),与 fetchAllDishes 共用同一缓存单元。
  * @param {object} [opts]
  * @param {string} [opts.category] 分类 meal/drink
  * @param {string[]} [opts.tags] 标签(数组有任一命中即入选)
@@ -314,10 +312,11 @@ export async function ingredientUsage() {
  * @param {number} [opts.page=1] 页码(从 1 开始)
  * @param {number} [opts.pageSize=20] 每页条数
  * @param {string[]} [opts.field] 字段投影(如 DISH_CARD_FIELDS),JS 层裁剪返回字段
+ * @param {boolean} [opts.force=false] 是否强制穿透缓存直接查云库(整页刷新时机用)
  * @returns {Promise<{list: Array, total: number, hasMore: boolean}>}
  */
-export async function listDishes({ category, tags, keyword, page = 1, pageSize = 20, field } = {}) {
-  const all = await loadCollection('dishes', fetchAllDishes);
+export async function listDishes({ category, tags, keyword, page = 1, pageSize = 20, field, force = false } = {}) {
+  const all = await loadCollection('dishes', () => fetchAll('dishes'), { force });
   // JS 端过滤(等价原数据库 buildDishWhere):分类 + 标签交集 + 关键字三字段模糊
   let list = all;
   if (category) list = list.filter((d) => d.category === category);
@@ -347,20 +346,20 @@ export async function listDishes({ category, tags, keyword, page = 1, pageSize =
 }
 
 /**
- * 按原料找菜:传入已选原料名,返回匹配菜品。
+ * 纯函数:按原料匹配菜品(交集粗筛 + matchScore 排序 + complete 子集过滤)。
+ * 直查版 searchDishesByIngredients 与首页内存快照匹配共用,保证两处排序一致。
  * 调料(isSeasoning)的排除由调用方在传入 names 前处理,本函数只按传入名称匹配。
- * 读全量 dishes 缓存后 JS 层粗筛 + 精排(等价原数据库 _.in 粗筛)。
+ * @param {Array} allDishes 菜品全量(可直接传首页内存快照)
  * @param {string[]} ingredientNames 已选原料名(建议已归一化)
  * @param {object} [opts]
  * @param {'partial'|'complete'} [opts.mode='partial'] partial=交集(匹配度降序);complete=菜品全部原料都在所选范围内
- * @returns {Promise<Array>} 匹配菜品(partial 模式带 matchScore 字段)
+ * @returns {Array} 匹配菜品(partial 模式带 matchScore 字段)
  */
-export async function searchDishesByIngredients(ingredientNames, { mode = 'partial' } = {}) {
+export function matchDishesByIngredients(allDishes, ingredientNames, { mode = 'partial' } = {}) {
   const names = (ingredientNames || []).map(normalizeName).filter(Boolean);
-  if (names.length === 0) return [];
-  // 与 listDishes 共用同一份 dishes 缓存,JS 端交集粗筛 + 模式精排
-  const all = await loadCollection('dishes', fetchAllDishes);
-  const candidates = all.filter((d) => (d.ingredientNames || []).some((n) => names.includes(n)));
+  if (names.length === 0 || !Array.isArray(allDishes)) return [];
+  // JS 端交集粗筛(等价原数据库 _.in 粗筛)
+  const candidates = allDishes.filter((d) => (d.ingredientNames || []).some((n) => names.includes(n)));
   if (mode === 'complete') {
     return candidates
       .filter((dish) => (dish.ingredientNames || []).every((n) => names.includes(n)))
@@ -374,6 +373,19 @@ export async function searchDishesByIngredients(ingredientNames, { mode = 'parti
       return { ...dish, matchScore: dishNames.length ? hitCount / dishNames.length : 0 };
     })
     .sort((a, b) => b.matchScore - a.matchScore || a.name.localeCompare(b.name, 'zh'));
+}
+
+/**
+ * 按原料找菜:直查云库拉全量后交给纯函数 matchDishesByIngredients 匹配。
+ * @param {string[]} ingredientNames 已选原料名(建议已归一化)
+ * @param {object} [opts]
+ * @param {'partial'|'complete'} [opts.mode='partial'] 同 matchDishesByIngredients
+ * @returns {Promise<Array>} 匹配菜品(partial 模式带 matchScore 字段)
+ */
+export async function searchDishesByIngredients(ingredientNames, { mode = 'partial' } = {}) {
+  // 维持直查(首页已改用内存快照匹配,此函数仅作兜底入口)
+  const all = await fetchAll('dishes');
+  return matchDishesByIngredients(all, ingredientNames, { mode });
 }
 
 /**
@@ -393,15 +405,16 @@ function normalizeDishSteps(raw) {
 }
 
 /**
- * 菜品详情:优先从全量 dishes 缓存命中;缓存中找不到(如其他设备新增/缓存过期)时单查 L3 兜底。
+ * 菜品详情:单条不走集合缓存(维持直查)——进入详情页属于整页刷新,直接查云库拿最新;
+ * 全量中找不到(并发删除等)时单查兜底。
  * @param {string} id 菜品 _id
  * @returns {Promise<object>} 菜品文档(steps 已归一化为字符串数组)
  */
 export async function getDish(id) {
-  const all = await loadCollection('dishes', fetchAllDishes);
+  const all = await fetchAll('dishes');
   const found = all.find((d) => d._id === id);
   if (found) return normalizeDishSteps(found);
-  // 全量缓存中找不到:单查 L3 兜底(文档不存在时 SDK 抛错,由调用方提示)
+  // 全量中找不到:单查兜底(文档不存在时 SDK 抛错,由调用方提示)
   const db = wx.cloud.database();
   const res = await db.collection('dishes').doc(id).get();
   return normalizeDishSteps(res.data);
@@ -423,7 +436,7 @@ export async function getDish(id) {
  * @param {Array<{id?: string, name: string, amount?: string, isSeasoning?: boolean}>} [dish.ingredients] 原料;元素带 id 时信任该 id(跳过 ensure 查询,仅用于已知存在的原料)
  * @param {boolean} [dish.isBuiltin] 是否内置(新增时写入,更新时缺省保留原值)
  * @param {object} [opts]
- * @param {boolean} [opts.skipSync=false] 批量导入等场景跳过写后重拉回填(仅 markDirty 清缓存,下次读走 L3)
+ * @param {boolean} [opts.skipSync=false] 兼容参数(历史控制写后逐条重拉,现在写库统一 markDirty;保留避免改动调用方)
  * @returns {Promise<object>} 保存后的文档
  */
 export async function saveDish(dish, { skipSync = false } = {}) {
@@ -446,8 +459,8 @@ export async function saveDish(dish, { skipSync = false } = {}) {
       ingredientNames.push(normalizeName(ing.name));
       continue;
     }
-    // 内部 ensure:不各自同步缓存(sync:false),由 saveDish 写库后统一同步,避免循环内反复拉全量
-    const ensured = await ensureIngredient(ing.name, ing.isSeasoning, { sync: false });
+    // 内部 ensure:直查架构写后无需同步,再次读取自然拿到最新数据
+    const ensured = await ensureIngredient(ing.name, ing.isSeasoning);
     ing.id = ensured._id;
     ing.name = ensured.name;
     ingredientIds.push(ensured._id);
@@ -478,19 +491,12 @@ export async function saveDish(dish, { skipSync = false } = {}) {
       updateData[key] = key === 'updatedAt' ? data[key] : _.set(data[key]);
     });
     await db.collection('dishes').doc(dish.id).update({ data: updateData });
-    markDirty(['dishes', 'ingredients']); // 写库后清 L1+L2
-    if (!skipSync) {
-      await refreshCollection('dishes', fetchAllDishes);
-      await refreshCollection('ingredients', fetchAllIngredients);
-    }
+    // 写库成功:本机两层缓存失效,下次读取走 L3 拿最新(内部 ensure 新增原料也会失效 ingredients)
+    markDirty(['dishes', 'ingredients']);
     return { _id: dish.id, ...data };
   }
   const added = await db.collection('dishes').add({ data: { ...data, createdAt: db.serverDate() } });
-  markDirty(['dishes', 'ingredients']); // 写库后清 L1+L2
-  if (!skipSync) {
-    await refreshCollection('dishes', fetchAllDishes);
-    await refreshCollection('ingredients', fetchAllIngredients);
-  }
+  markDirty(['dishes', 'ingredients']);
   return { _id: added._id, ...data };
 }
 
@@ -519,8 +525,8 @@ export async function removeDish(id) {
     await wx.cloud.deleteFile({ fileList: images });
   }
   await db.collection('dishes').doc(id).remove();
-  markDirty(['dishes']); // 写库后清 L1+L2
-  await refreshCollection('dishes', fetchAllDishes);
+  // 写库成功:本机两层缓存失效,下次读取走 L3 拿最新
+  markDirty(['dishes']);
   return { removed: true, dishName: dish.name };
 }
 
@@ -552,11 +558,11 @@ export async function getDishByName(name) {
 
 /**
  * 仅更新菜品 images 字段(内置数据增量同步补图等场景,不触碰其他字段)。
- * 写库后 markDirty 清缓存;skipSync 时跳过重拉回填(批量导入期间避免逐条拉全量)。
+ * 双层缓存:写库成功后 markDirty 本机两层,下次读取自然拿到最新。
  * @param {string} id 菜品 _id
  * @param {string[]} images 新图片数组
  * @param {object} [opts]
- * @param {boolean} [opts.skipSync=false] 批量导入场景跳过写后重拉回填(仅 markDirty 清缓存)
+ * @param {boolean} [opts.skipSync=false] 兼容参数(历史控制写后同步,现在写库统一 markDirty;保留避免改动调用方)
  * @returns {Promise<void>}
  */
 export async function updateDishImages(id, images, { skipSync = false } = {}) {
@@ -566,7 +572,6 @@ export async function updateDishImages(id, images, { skipSync = false } = {}) {
     data: { images: _.set(images || []) },
   });
   markDirty(['dishes']);
-  if (!skipSync) await refreshCollection('dishes', fetchAllDishes);
 }
 
 /* ---------------- records 数据层 ---------------- */
@@ -582,16 +587,6 @@ export function dateKey(d = new Date()) {
   const month = String(d.getMonth() + 1).padStart(2, '0');
   const day = String(d.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
-}
-
-/**
- * 内部:清理除 keepDate 外的所有历史 records 缓存键(存储泄漏防护)。
- * records:${date} 每天一个新键写入 wx.Storage,历史日期键永不读、永不删;
- * 操作某天 records 时顺手清掉其他天的死键(keepDate 当天保留)。
- * @param {string} keepDate 需保留的日期键 YYYY-MM-DD
- */
-function purgeStaleRecordCaches(keepDate) {
-  storageCache.removeByPrefix('rmdc_records:', storageCache.cacheKey(`records:${keepDate}`));
 }
 
 /**
@@ -619,23 +614,20 @@ export async function addCookRecord(dishId) {
     createdAt: db.serverDate(),
   };
   const added = await db.collection('records').add({ data: doc });
-  // 写库后同步三层:今日记录缓存失效并重拉回填 L2;顺手清理其他日期的死缓存键
-  markDirty([`records:${doc.date}`]);
-  purgeStaleRecordCaches(doc.date);
-  await refreshCollection(`records:${doc.date}`, () => fetchAll('records', { date: doc.date }));
+  // records 读取(todayRecords/statsAggregate)为直查不走集合缓存,无需失效 L2;
+  // 仅全清 L1 内存(防御其他内存快照持有旧引用),保证本机写后立读最新
+  markDirty();
   return { _id: added._id, ...doc };
 }
 
 /**
- * 某天的做菜记录列表(倒序,新→旧)。
- * 读三段缓存(records:日期),L2 命中不重打库。
+ * 某天的做菜记录列表(倒序,新→旧)。records 维持直查——今日已定卡是最直观的
+ * 一致性窗口,每次读取都拿云库最新(不走集合缓存)。
  * @param {string} [date] 日期键 YYYY-MM-DD,默认今天
  * @returns {Promise<Array>} 记录数组(createdAt 倒序)
  */
 export async function todayRecords(date = dateKey()) {
-  const list = await loadCollection(`records:${date}`, () => fetchAll('records', { date }));
-  // 读取某天记录时顺手清理其他日期的死缓存键(存储泄漏防护)
-  purgeStaleRecordCaches(date);
+  const list = await fetchAll('records', { date });
   return list.slice().sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 }
 
@@ -655,8 +647,6 @@ export async function undoLastTodayRecord(date = dateKey()) {
   if (res.data.length === 0) return { removed: false };
   const record = res.data[0];
   await db.collection('records').doc(record._id).remove();
-  markDirty([`records:${date}`]); // 写库后清 L1+L2
-  await refreshCollection(`records:${date}`, () => fetchAll('records', { date }));
   return { removed: true, record };
 }
 
@@ -699,23 +689,4 @@ export async function statsAggregate({ from, to } = {}) {
     (a, b) => b.count - a.count || a.name.localeCompare(b.name, 'zh'),
   );
   return { byDate, byDish, byIngredient };
-}
-
-/**
- * 首屏预热:并行拉取核心集合(dishes / ingredients / 今日 records)回填 L1+L2。
- * app.js onLaunch 中 wx.cloud.init 后调用,异步不阻塞首屏;
- * 页面后续请求优先命中本地缓存,减少云数据库调用。
- */
-export async function preloadCoreData() {
-  try {
-    const today = dateKey();
-    await Promise.all([
-      loadCollection('dishes', fetchAllDishes),
-      loadCollection('ingredients', fetchAllIngredients),
-      loadCollection(`records:${today}`, () => fetchAll('records', { date: today })),
-    ]);
-  } catch (err) {
-    // 预热失败降级:页面请求时自行走 L3 拉取并回填,不影响使用
-    console.error('[db] preloadCoreData 失败(降级)', err);
-  }
 }

@@ -58,7 +58,8 @@ Page({
     // 非首次进入且 onHide 已置位(从详情/编辑/更多等页返回)时,静默刷新第一页保证列表最新
     if (!this.firstShow && this.needsRefresh) {
       this.needsRefresh = false;
-      this.refreshFirstPage(this.nextSeq(), true);
+      // 整页刷新时机(onShow):强制穿透缓存直查云库,家人任一手机改库后回到本页即最新
+      this.refreshFirstPage(this.nextSeq(), true, true);
     }
     this.firstShow = false;
   },
@@ -144,9 +145,11 @@ Page({
   /**
    * 拉取当前筛选条件下的全部菜品并排序(家庭量级循环翻页即可,保证全局排序与分页切片一致)。
    * 排序规则见 utils/menuSort.js:难度 简单→中等→较难,同名按名称;大类「全部」时餐食整列在前。
+   * @param {number} seq 请求序号
+   * @param {boolean} [force=false] 是否强制穿透缓存(整页刷新时机:onShow/下拉刷新)
    * @returns {Promise<Array|null>} 排序后的菜品文档数组;期间条件已变化则返回 null
    */
-  async loadAllSortedDishes(seq) {
+  async loadAllSortedDishes(seq, force) {
     const all = [];
     let page = 1;
     for (let i = 0; i < 100; i += 1) {
@@ -157,6 +160,9 @@ Page({
         page,
         pageSize: PAGE_SIZE,
         field: DISH_CARD_FIELDS, // 卡片流字段投影,steps 不进列表查询载荷
+        // 整页刷新(force)只在第一页强制穿透:首拉即回填两层缓存,后续翻页走刚回填的缓存,
+        // 避免同一集合在翻页循环里重复全量打库;筛选/搜索等交互不穿透,命中缓存秒开
+        force: page === 1 ? force : false,
       });
       if (seq !== this.requestSeq) return null; // 期间已切换条件,丢弃过期结果
       all.push(...res.list);
@@ -166,11 +172,12 @@ Page({
     return sortMenuDishes(all, { category: this.data.category });
   },
 
-  /** 拉取第一页并替换列表(重置分页);silent=true 时不清空旧列表(静默刷新/下拉刷新) */
-  async refreshFirstPage(seq, silent) {
+  /** 拉取第一页并替换列表(重置分页);silent=true 时不清空旧列表(静默刷新/下拉刷新);
+   *  force=true 时整页刷新强制穿透缓存(onShow/下拉刷新),筛选/搜索等交互不穿透走缓存 */
+  async refreshFirstPage(seq, silent, force = false) {
     if (!silent) this.setData({ loading: true });
     try {
-      const sorted = await this.loadAllSortedDishes(seq);
+      const sorted = await this.loadAllSortedDishes(seq, force);
       if (seq !== this.requestSeq || !sorted) return;
       this.fullList = sorted; // 全量排序结果,供触底翻页本地切片
       this.setData({
@@ -269,10 +276,10 @@ Page({
     wx.switchTab({ url: '/pages/more/index' });
   },
 
-  /** 下拉刷新:重置第一页(静默模式,保留旧列表避免闪空) */
+  /** 下拉刷新:重置第一页(静默模式,保留旧列表避免闪空);force 强制穿透缓存拿云库最新 */
   async onPullDownRefresh() {
     const seq = this.nextSeq();
-    await this.refreshFirstPage(seq, true);
+    await this.refreshFirstPage(seq, true, true);
     wx.stopPullDownRefresh();
   },
 

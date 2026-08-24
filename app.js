@@ -1,6 +1,5 @@
 // app.js
 import { config } from './config/index';
-import { preloadCoreData } from './api/db';
 
 App({
   onLaunch() {
@@ -13,8 +12,7 @@ App({
       env: config.envId,
       traceUser: true,
     });
-    // 首屏预热:异步拉核心数据填充三层缓存(不阻塞首屏;页面自己请求时会先查 L2 加速)
-    preloadCoreData();
+    // 直查架构:冷启动不预热,页面 onShow 直接查云库取最新数据(多设备一致性优先)
   },
   globalData: {},
 });

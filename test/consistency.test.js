@@ -1,16 +1,16 @@
 /**
  * test/consistency.test.js
- * 三层缓存一致性验收(node --test)
+ * 数据层一致性验收(node --test)
  * 运行:node --test
- * 覆盖:写后同步三层(saveDish 新增 → listDishes 立即可见)、删除同步、L2 回填与命中不再打库、
- *      ensureIngredient 独立同步
+ * 覆盖:双层缓存语义(写后 markDirty 失效、缓存命中不打库、删除同步)、
+ *      内置公共图保护、matchDishesByIngredients 纯函数匹配
  * 说明:api/db.js 内部仅在函数内引用 wx,node 下以 global.wx 替身(mock wx.cloud 数据库 + wx.Storage)
- *      wiring 被测模块,断言真实缓存行为。
+ *      wiring 被测模块,断言真实数据库读写行为。
  */
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const db = require('../api/db.js');
-const storageCache = require('../utils/storageCache.js');
+const { matchDishesByIngredients } = db;
 const { queryCache } = require('../utils/queryCache.js');
 
 /* ---------------- mock 工具 ---------------- */
@@ -42,19 +42,10 @@ function matchCond(doc, cond) {
 }
 
 /**
- * 构造 wx 替身:mock wx.cloud 数据库 + wx.Storage,返回 { counters } 供断言查询次数。
+ * 构造 wx 替身:mock wx.cloud 数据库,返回 { counters } 供断言查询次数。
  * @param {object} initialData 初始集合数据 { dishes: [...], ingredients: [...], records: [...], app_meta: [...] }
  */
 function setupMockWx(initialData = {}) {
-  // ---- wx.Storage ----
-  const storageMap = new Map();
-  const wxStorage = {
-    setStorageSync: (k, v) => storageMap.set(k, JSON.parse(JSON.stringify(v))),
-    getStorageSync: (k) => (storageMap.has(k) ? JSON.parse(JSON.stringify(storageMap.get(k))) : ''),
-    removeStorageSync: (k) => storageMap.delete(k),
-    getStorageInfoSync: () => ({ keys: Array.from(storageMap.keys()) }),
-  };
-
   // ---- wx.cloud 数据库 ----
   const collections = {};
   for (const [name, docs] of Object.entries(initialData)) {
@@ -159,8 +150,9 @@ function setupMockWx(initialData = {}) {
     };
   };
 
+  // ---- wx.Storage(双层缓存 L2 层):每次环境重建即全新,避免用例间缓存串扰 ----
+  const storage = new Map();
   global.wx = {
-    ...wxStorage,
     cloud: {
       database() {
         return {
@@ -176,21 +168,33 @@ function setupMockWx(initialData = {}) {
         return { fileList, deleted: fileList.length };
       },
     },
+    getStorageSync(key) {
+      const raw = storage.get(key);
+      return raw === undefined ? '' : raw;
+    },
+    setStorageSync(key, value) {
+      storage.set(key, JSON.parse(JSON.stringify(value)));
+    },
+    removeStorageSync(key) {
+      storage.delete(key);
+    },
+    getStorageInfoSync() {
+      return { keys: Array.from(storage.keys()) };
+    },
   };
-  return { counters };
+  return { counters, storage };
 }
 
-/** 快速重置:new mock 环境 + 清缓存,返回 counters(每个用例开头调用,保证 wx 已就位) */
+/** 快速重置:new mock 环境 + 清空 L1 queryCache 单例,返回 counters
+ *  (每个用例开头调用,保证 wx 已就位且两层缓存无串扰) */
 function freshEnv(initialData) {
-  const mock = setupMockWx(initialData);
-  queryCache.markDirty();
-  storageCache.clearAll();
-  return mock;
+  queryCache.markDirty(); // L1 内存缓存是模块级单例,用例间必须清空防串扰
+  return setupMockWx(initialData);
 }
 
 /* ---------------- 用例 ---------------- */
 
-test('一致性:saveDish 新增后 listDishes 立即能查到新菜(三层同步)', async () => {
+test('一致性:saveDish 新增后 listDishes 立即能查到新菜(markDirty 后走 L3)', async () => {
   freshEnv();
   const saved = await db.saveDish({
     name: '西红柿炒鸡蛋',
@@ -205,24 +209,13 @@ test('一致性:saveDish 新增后 listDishes 立即能查到新菜(三层同步
   assert.equal(res.list[0].name, '西红柿炒鸡蛋');
 });
 
-test('一致性:saveDish 写库后 L2(storage)立即回填新菜', async () => {
-  freshEnv();
-  await db.saveDish({ name: '清炒土豆丝', category: 'meal', ingredients: [{ name: '土豆' }] });
-  const cached = storageCache.get('dishes');
-  assert.ok(Array.isArray(cached));
-  assert.ok(cached.some((d) => d.name === '清炒土豆丝'));
-  // 原料集合同样已回填(ensure 新增了原料)
-  const ings = storageCache.get('ingredients');
-  assert.ok(ings.some((d) => d.name === '土豆'));
-});
-
-test('一致性:写后读命中 L2,不再请求 L3(数据库读取计数不变)', async () => {
+test('缓存:写后读缓存已失效,listDishes 走 L3 拿最新(本机写后立读最新)', async () => {
   const mock = freshEnv();
   await db.saveDish({ name: '蛋炒饭', category: 'meal', ingredients: [{ name: '鸡蛋' }, { name: '米饭' }] });
   const readsAfterSave = mock.counters.reads;
-  const res = await db.listDishes({});
-  assert.equal(res.total, 1);
-  assert.equal(mock.counters.reads, readsAfterSave, 'listDishes 应从 L2 命中,不新增数据库读取');
+  await db.listDishes({});
+  // saveDish 成功后 markDirty 两层,listDishes 缓存未命中必然走 L3,拿到的必然是最新数据
+  assert.ok(mock.counters.reads > readsAfterSave, '写后缓存失效,listDishes 应重新打库取最新');
 });
 
 test('一致性:removeDish 后 getDish 抛 not found,listDishes 不再包含', async () => {
@@ -233,15 +226,6 @@ test('一致性:removeDish 后 getDish 抛 not found,listDishes 不再包含', a
   await assert.rejects(() => db.getDish(saved._id), /not exist/i);
   const res = await db.listDishes({});
   assert.equal(res.total, 0);
-});
-
-test('一致性:removeDish 后 L2 缓存同步为最新(不含被删菜)', async () => {
-  freshEnv();
-  const saved = await db.saveDish({ name: '糖醋里脊', category: 'meal', ingredients: [{ name: '里脊肉' }] });
-  await db.removeDish(saved._id);
-  const cached = storageCache.get('dishes');
-  assert.ok(Array.isArray(cached));
-  assert.equal(cached.some((d) => d._id === saved._id), false);
 });
 
 test('一致性:removeDish 只删用户云图,内置公共图(映射内)保留', async () => {
@@ -275,7 +259,7 @@ test('一致性:removeDish 无内置图映射(loadBuiltinImageMap 返回 null)�
   assert.deepEqual(mock.counters.deletedFileList, ['cloud://builtin/红烧肉.jpg']);
 });
 
-test('一致性:addCookRecord 后 todayRecords 立即可见,L2 已回填', async () => {
+test('一致性:addCookRecord 后 todayRecords 立即可见', async () => {
   freshEnv();
   const saved = await db.saveDish({ name: '麻婆豆腐', category: 'meal', ingredients: [{ name: '豆腐' }] });
   const record = await db.addCookRecord(saved._id);
@@ -283,8 +267,6 @@ test('一致性:addCookRecord 后 todayRecords 立即可见,L2 已回填', async
   const list = await db.todayRecords();
   assert.equal(list.length, 1);
   assert.equal(list[0].dishName, '麻婆豆腐');
-  const cached = storageCache.get(`records:${db.dateKey()}`);
-  assert.ok(Array.isArray(cached) && cached.length === 1);
 });
 
 test('一致性:undoLastTodayRecord 撤销后 todayRecords 立即更新', async () => {
@@ -297,14 +279,69 @@ test('一致性:undoLastTodayRecord 撤销后 todayRecords 立即更新', async 
   assert.equal(list.length, 0);
 });
 
-test('一致性:ensureIngredient 独立调用后 listIngredients 立即可见(L2 已回填)', async () => {
+test('一致性:ensureIngredient 独立调用后 listIngredients 立即可见', async () => {
   freshEnv();
   const res = await db.ensureIngredient('紫苏');
   assert.equal(res.isNew, true);
   const list = await db.listIngredients('紫苏');
   assert.ok(list.some((d) => d.name === '紫苏'));
-  const cached = storageCache.get('ingredients');
-  assert.ok(cached.some((d) => d.name === '紫苏'));
 });
 
+/* ---------------- matchDishesByIngredients 纯函数 ---------------- */
 
+/** 构造测试菜品(只带匹配所需的 name / ingredientNames) */
+function dish(name, ingredientNames) {
+  return { _id: name, name, ingredientNames };
+}
+
+test('match:partial 交集匹配,返回有交集的菜并带 matchScore(命中数/菜品原料总数)', () => {
+  const all = [
+    dish('西红柿炒鸡蛋', ['西红柿', '鸡蛋']),
+    dish('西红柿蛋汤', ['西红柿', '鸡蛋', '清水']),
+    dish('青椒肉丝', ['青椒', '猪肉']),
+  ];
+  const matched = matchDishesByIngredients(all, ['西红柿', '鸡蛋'], { mode: 'partial' });
+  assert.deepEqual(
+    matched.map((d) => d.name),
+    ['西红柿炒鸡蛋', '西红柿蛋汤'],
+  );
+  assert.equal(matched[0].matchScore, 1); // 2/2
+  assert.equal(matched[1].matchScore, 2 / 3);
+});
+
+test('match:partial 按匹配度降序排序,同分按菜名拼音', () => {
+  const all = [
+    dish('三菜', ['a', 'b', 'c']),
+    dish('一菜', ['a']),
+    dish('二菜', ['a']),
+  ];
+  const matched = matchDishesByIngredients(all, ['a'], { mode: 'partial' });
+  // 二菜 1/1、一菜 1/1 同分按拼音(二菜 er < 一菜 yi)在前;三菜 1/3 最后
+  assert.deepEqual(
+    matched.map((d) => d.name),
+    ['二菜', '一菜', '三菜'],
+  );
+  assert.deepEqual(matched.map((d) => d.matchScore), [1, 1, 1 / 3]);
+});
+
+test('match:complete 完全匹配,仅返回全部原料都在所选范围内的菜(子集)', () => {
+  const all = [
+    dish('西红柿炒鸡蛋', ['西红柿', '鸡蛋']),
+    dish('西红柿蛋汤', ['西红柿', '鸡蛋', '清水']),
+  ];
+  const matched = matchDishesByIngredients(all, ['西红柿', '鸡蛋'], { mode: 'complete' });
+  // 「就用这些料做」:所选范围内能完整覆盖的只有 西红柿炒鸡蛋(蛋汤还差清水)
+  assert.deepEqual(
+    matched.map((d) => d.name),
+    ['西红柿炒鸡蛋'],
+  );
+});
+
+test('match:空输入 / 空数据返回空数组,不抛错', () => {
+  const one = [dish('菜', ['西红柿'])];
+  assert.deepEqual(matchDishesByIngredients([], ['西红柿'], { mode: 'partial' }), []);
+  assert.deepEqual(matchDishesByIngredients(one, [], { mode: 'partial' }), []);
+  assert.deepEqual(matchDishesByIngredients(null, ['西红柿'], { mode: 'partial' }), []);
+  // 已选原料名未归一化时同样命中(内部归一化)
+  assert.deepEqual(matchDishesByIngredients(one, [' 西红柿 '], { mode: 'partial' })[0].name, '菜');
+});

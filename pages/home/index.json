@@ -1,5 +1,7 @@
 {
   "navigationBarTitleText": "首页",
+  "enablePullDownRefresh": true,
+  "backgroundColor": "#f5f6f7",
   "usingComponents": {
     "t-search": "tdesign-miniprogram/search/search",
     "t-switch": "tdesign-miniprogram/switch/switch",

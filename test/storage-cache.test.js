@@ -1,182 +1,159 @@
 /**
  * test/storage-cache.test.js
- * utils/storageCache.js 的单元测试(node --test)
+ * 本地持久缓存(storageCache,双层缓存 L2)单元测试(node --test)
  * 运行:node --test
- * 覆盖:set/get/remove/clearAll 正常回环、前缀规范、JSON 损坏降级、storage 超限降级、数组防污染
- * 说明:wx.Storage 以 in-memory 替身注入(global.wx),storageCache 内部仅在函数内引用 wx,node 下可正常 import。
+ * 覆盖:set/get 回环、TTL 过期/未过期命中、remove、clearAll、removeByPrefix、异常降级、浅拷贝防污染
+ * 说明:storageCache 内部仅在函数内引用 wx,node 下以 global.wx 替身
+ *      (in-memory Map 模拟序列化往返)注入。
  */
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const storageCache = require('../utils/storageCache.js');
 
-/**
- * 构造 wx.Storage 的 in-memory mock 替身(模拟序列化往返:Date→string、对象深拷贝)。
- * @param {object} [opts]
- * @param {boolean} [opts.setError] setStorageSync 抛错(模拟 10MB 超限)
- * @param {boolean} [opts.getError] getStorageSync 抛错
- * @param {string|null} [opts.corruptKey] 该键返回损坏 JSON
- * @returns {Map} 内存存储(测试可直查)
- */
-function setupMockStorage({ setError = false, getError = false, corruptKey = null } = {}) {
-  const mem = new Map();
+/** 构造 wx.Storage 替身:in-memory Map 模拟序列化往返(与真机 wx.Storage 行为一致) */
+function setupStorageMock() {
+  const store = new Map();
   global.wx = {
-    setStorageSync(key, value) {
-      if (setError) throw new Error('storage limit exceeded');
-      mem.set(key, JSON.parse(JSON.stringify(value)));
-    },
     getStorageSync(key) {
-      if (getError) throw new Error('storage get failed');
-      if (corruptKey && key === corruptKey) return '{bad json!!';
-      return mem.has(key) ? JSON.parse(JSON.stringify(mem.get(key))) : '';
+      const raw = store.get(key);
+      return raw === undefined ? '' : raw;
+    },
+    setStorageSync(key, value) {
+      // 模拟 wx 序列化往返(存储层天然隔离对象引用)
+      store.set(key, JSON.parse(JSON.stringify(value)));
     },
     removeStorageSync(key) {
-      mem.delete(key);
+      store.delete(key);
     },
     getStorageInfoSync() {
-      return { keys: Array.from(mem.keys()) };
+      return { keys: Array.from(store.keys()) };
     },
   };
-  return mem;
+  return store;
 }
 
-/** 静默 console.error(降级用例会打印预期错误,避免污染测试输出) */
-function silenceConsoleError(fn) {
-  const orig = console.error;
-  console.error = () => {};
-  try {
-    return fn();
-  } finally {
-    console.error = orig;
-  }
-}
+/* ---------------- 基础回环 ---------------- */
 
-test('storageCache: set/get 正常回环,自动补 rmdc_ 前缀', () => {
-  const mem = setupMockStorage();
-  const items = [{ _id: '1', name: '西红柿' }, { _id: '2', name: '鸡蛋' }];
-  storageCache.set('ingredients', items);
-  assert.ok(mem.has('rmdc_ingredients'), 'storage 键应带 rmdc_ 前缀');
-  assert.deepEqual(storageCache.get('ingredients'), items);
+test('storageCache:set/get 回环,值格式为 {ts, data}', () => {
+  setupStorageMock();
+  const list = [{ _id: '1', name: '西红柿' }, { _id: '2', name: '鸡蛋' }];
+  storageCache.set('dishes', list);
+  const got = storageCache.get('dishes', 5 * 60 * 1000);
+  assert.deepEqual(got, list);
+  // 存储原始值是 {ts, data} 结构
+  const raw = global.wx.getStorageSync('rmdc_dishes');
+  assert.equal(typeof raw.ts, 'number');
+  assert.deepEqual(raw.data, list);
 });
 
-test('storageCache: get 未设置的键返回 undefined', () => {
-  setupMockStorage();
-  assert.equal(storageCache.get('dishes'), undefined);
-  assert.equal(storageCache.get('rmdc_unknown'), undefined);
+test('storageCache:cacheKey 幂等补全 rmdc_ 前缀', () => {
+  setupStorageMock();
+  assert.equal(storageCache.cacheKey('dishes'), 'rmdc_dishes');
+  assert.equal(storageCache.cacheKey('rmdc_dishes'), 'rmdc_dishes');
 });
 
-test('storageCache: 存储值格式为 { items, syncTs }', () => {
-  const mem = setupMockStorage();
-  storageCache.set('dishes', [{ _id: 'a' }]);
-  const raw = mem.get('rmdc_dishes');
-  assert.ok(Array.isArray(raw.items));
-  assert.equal(raw.items.length, 1);
-  assert.equal(typeof raw.syncTs, 'number');
+test('storageCache:get 返回浅拷贝,调用方排序/增删不污染持久缓存', () => {
+  setupStorageMock();
+  const list = [{ _id: '2', name: '鸡蛋' }, { _id: '1', name: '西红柿' }];
+  storageCache.set('dishes', list);
+  const got = storageCache.get('dishes', 5 * 60 * 1000);
+  got.reverse(); // 调用方排序(数组级操作)
+  got.push({ _id: '3', name: '土豆' }); // 调用方增删
+  const again = storageCache.get('dishes', 5 * 60 * 1000);
+  assert.deepEqual(again, list);
 });
 
-test('storageCache: cacheKey 幂等,传完整键与集合名等价', () => {
-  setupMockStorage();
-  storageCache.set('rmdc_ingredients', [{ name: '姜' }]);
-  assert.deepEqual(storageCache.get('ingredients'), [{ name: '姜' }]);
-  assert.deepEqual(storageCache.get('rmdc_ingredients'), [{ name: '姜' }]);
+/* ---------------- TTL 过期 ---------------- */
+
+test('storageCache:未过期命中(TTL 内返回数据)', () => {
+  setupStorageMock();
+  storageCache.set('dishes', [{ _id: '1', name: '菜' }]);
+  assert.deepEqual(storageCache.get('dishes', 5 * 60 * 1000), [{ _id: '1', name: '菜' }]);
 });
 
-test('storageCache: 同键二次 set 覆盖旧值', () => {
-  setupMockStorage();
-  storageCache.set('dishes', [{ name: '旧菜' }]);
-  storageCache.set('dishes', [{ name: '新菜' }, { name: '另一道' }]);
-  assert.deepEqual(storageCache.get('dishes'), [{ name: '新菜' }, { name: '另一道' }]);
+test('storageCache:过期返回 null(超过 TTL 后上层走云库)', () => {
+  setupStorageMock();
+  storageCache.set('dishes', [{ _id: '1', name: '菜' }]);
+  // 直接把存储里的 ts 拨回 10 秒前,模拟写入已久(不依赖真实时钟)
+  const raw = global.wx.getStorageSync('rmdc_dishes');
+  global.wx.setStorageSync('rmdc_dishes', { ts: Date.now() - 10 * 1000, data: raw.data });
+  assert.equal(storageCache.get('dishes', 5 * 1000), null);
 });
 
-test('storageCache: remove 后 get 返回 undefined,其他键保留', () => {
-  const mem = setupMockStorage();
-  storageCache.set('dishes', [{ name: 'A' }]);
-  storageCache.set('ingredients', [{ name: 'B' }]);
+test('storageCache:不传 ttlMs 时按默认 5 分钟判断,过期返回 null', () => {
+  setupStorageMock();
+  storageCache.set('ingredients', [{ _id: '1', name: '盐' }]);
+  const raw = global.wx.getStorageSync('rmdc_ingredients');
+  global.wx.setStorageSync('rmdc_ingredients', { ts: Date.now() - 10 * 60 * 1000, data: raw.data });
+  assert.equal(storageCache.get('ingredients'), null); // 默认 5min,10 分钟前写入已过期
+});
+
+/* ---------------- remove / clearAll / removeByPrefix ---------------- */
+
+test('storageCache:remove 删除指定键后 get 返回 null', () => {
+  setupStorageMock();
+  storageCache.set('dishes', [{ _id: '1', name: '菜' }]);
   storageCache.remove('dishes');
-  assert.equal(storageCache.get('dishes'), undefined);
-  assert.deepEqual(storageCache.get('ingredients'), [{ name: 'B' }]);
-  assert.ok(!mem.has('rmdc_dishes'));
+  assert.equal(storageCache.get('dishes', 5 * 60 * 1000), null);
 });
 
-test('storageCache: clearAll 只清 rmdc_ 前缀键,用户其他键保留', () => {
-  const mem = setupMockStorage();
-  storageCache.set('dishes', []);
-  storageCache.set('ingredients', []);
-  mem.set('user_setting', { theme: 'dark' });
+test('storageCache:clearAll 只清 rmdc_ 前缀键,不动用户其他键', () => {
+  setupStorageMock();
+  global.wx.setStorageSync('rmdc_dishes', { ts: Date.now(), data: [] });
+  global.wx.setStorageSync('rmdc_records:2026-08-23', { ts: Date.now(), data: [] });
+  global.wx.setStorageSync('userKey', { hello: 'world' }); // 用户手动写入的键
   storageCache.clearAll();
-  assert.equal(storageCache.get('dishes'), undefined);
-  assert.equal(storageCache.get('ingredients'), undefined);
-  assert.ok(mem.has('user_setting'), '非 rmdc_ 前缀键不应被清除');
+  assert.equal(global.wx.getStorageSync('rmdc_dishes'), '');
+  assert.equal(global.wx.getStorageSync('rmdc_records:2026-08-23'), '');
+  assert.deepEqual(global.wx.getStorageSync('userKey'), { hello: 'world' });
 });
 
-test('storageCache: JSON 损坏时 get 静默降级返回 undefined 不抛错', () => {
-  const mem = setupMockStorage({ corruptKey: 'rmdc_dishes' });
-  mem.set('rmdc_dishes', '{bad json!!');
-  silenceConsoleError(() => {
-    assert.equal(storageCache.get('dishes'), undefined);
-  });
-  // 损坏键不影响其他正常键
-  storageCache.set('ingredients', [{ name: '土豆' }]);
-  assert.deepEqual(storageCache.get('ingredients'), [{ name: '土豆' }]);
+test('storageCache:removeByPrefix 删除前缀匹配键,保留 exceptKey 与其他键', () => {
+  setupStorageMock();
+  global.wx.setStorageSync('rmdc_records:2026-08-22', { ts: Date.now(), data: [] });
+  global.wx.setStorageSync('rmdc_records:2026-08-23', { ts: Date.now(), data: [] });
+  global.wx.setStorageSync('rmdc_dishes', { ts: Date.now(), data: [] });
+  global.wx.setStorageSync('userKey', 1);
+  storageCache.removeByPrefix('rmdc_records:', 'rmdc_records:2026-08-23');
+  assert.equal(global.wx.getStorageSync('rmdc_records:2026-08-22'), ''); // 旧日期键被清
+  assert.ok(global.wx.getStorageSync('rmdc_records:2026-08-23')); // exceptKey 保留
+  assert.ok(global.wx.getStorageSync('rmdc_dishes')); // 非 records 前缀不动
+  assert.equal(global.wx.getStorageSync('userKey'), 1);
 });
 
-test('storageCache: setStorageSync 超限抛错时 set 不向外抛,业务可继续', () => {
-  setupMockStorage({ setError: true });
-  silenceConsoleError(() => {
-    storageCache.set('dishes', [{ name: '大菜单' }]);
-  });
-  // 写入失败但调用不抛错;未损坏的其他键可正常读写
-  assert.equal(storageCache.get('dishes'), undefined);
-});
+/* ---------------- 异常降级 ---------------- */
 
-test('storageCache: getStorageSync 抛错时 get 静默降级返回 undefined', () => {
-  setupMockStorage({ getError: true });
-  silenceConsoleError(() => {
-    assert.equal(storageCache.get('dishes'), undefined);
-  });
-});
-
-test('storageCache: get 返回数组浅拷贝,修改返回结果不污染持久缓存', () => {
-  setupMockStorage();
-  storageCache.set('dishes', [{ _id: '1', name: '菜一' }]);
-  const first = storageCache.get('dishes');
-  first.push({ _id: '2', name: '菜二' });
-  first[0].name = '被改';
-  const second = storageCache.get('dishes');
-  assert.equal(second.length, 1);
-  assert.equal(second[0].name, '菜一');
-});
-
-test('storageCache: removeByPrefix 删除匹配前缀键,exceptKey 保留', () => {
-  const mem = setupMockStorage();
-  storageCache.set('records:2026-08-20', [{ _id: 'r1' }]);
-  storageCache.set('records:2026-08-21', [{ _id: 'r2' }]);
-  storageCache.set('records:2026-08-22', [{ _id: 'r3' }]);
-  storageCache.set('dishes', [{ _id: 'd1' }]);
-  storageCache.removeByPrefix('rmdc_records:', storageCache.cacheKey('records:2026-08-21'));
-  assert.equal(storageCache.get('records:2026-08-20'), undefined);
-  assert.deepEqual(storageCache.get('records:2026-08-21'), [{ _id: 'r2' }], 'exceptKey 应保留');
-  assert.equal(storageCache.get('records:2026-08-22'), undefined);
-  assert.ok(mem.has('rmdc_dishes'), '非 records 前缀键不应被清除');
-});
-
-test('storageCache: removeByPrefix 无匹配键时静默成功不抛错', () => {
-  const mem = setupMockStorage();
-  storageCache.set('dishes', [{ _id: 'd1' }]);
-  storageCache.removeByPrefix('rmdc_records:', 'rmdc_records:2026-08-21');
-  assert.ok(mem.has('rmdc_dishes'), '无匹配时不应误删其他键');
-});
-
-test('storageCache: removeByPrefix 遍历异常时静默降级不抛错', () => {
-  const mem = new Map();
-  global.wx = {
-    setStorageSync: (k, v) => mem.set(k, v),
-    getStorageSync: (k) => (mem.has(k) ? mem.get(k) : ''),
-    removeStorageSync: (k) => mem.delete(k),
-    getStorageInfoSync() {
-      throw new Error('storage info failed');
-    },
+test('storageCache:getStorageSync 抛错时 get 静默返回 null,不抛出', () => {
+  setupStorageMock();
+  global.wx.getStorageSync = () => {
+    throw new Error('storage 不可用');
   };
-  silenceConsoleError(() => {
-    storageCache.removeByPrefix('rmdc_records:', 'rmdc_records:2026-08-21');
-  });
+  assert.equal(storageCache.get('dishes', 5 * 60 * 1000), null);
+});
+
+test('storageCache:setStorageSync 抛错(如 10MB 超限)时 set 静默降级,不抛出', () => {
+  setupStorageMock();
+  global.wx.setStorageSync = () => {
+    throw new Error('exceed storage limit');
+  };
+  storageCache.set('dishes', [{ _id: '1', name: '菜' }]); // 不应抛
+  assert.equal(storageCache.get('dishes', 5 * 60 * 1000), null); // 无缓存,走 L3
+});
+
+test('storageCache:JSON 损坏 / 历史旧格式({items,syncTs})时 get 返回 null 自愈', () => {
+  setupStorageMock();
+  global.wx.setStorageSync('rmdc_dishes', 'not-json{{{');
+  assert.equal(storageCache.get('dishes', 5 * 60 * 1000), null);
+  // 历史 F3 时代的旧格式 {items, syncTs}(无 data 字段)→ 按未命中处理
+  global.wx.setStorageSync('rmdc_dishes', { items: [{ _id: '1' }], syncTs: Date.now() });
+  assert.equal(storageCache.get('dishes', 5 * 60 * 1000), null);
+});
+
+test('storageCache:getStorageInfoSync 抛错时 clearAll/removeByPrefix 静默降级', () => {
+  setupStorageMock();
+  global.wx.getStorageInfoSync = () => {
+    throw new Error('info 不可用');
+  };
+  storageCache.clearAll(); // 不应抛
+  storageCache.removeByPrefix('rmdc_records:', 'rmdc_records:2026-08-23'); // 不应抛
 });

@@ -8,7 +8,7 @@
  * - 匹配结果区(按需展示):
  *   - 未选原料且未选分类:「未搜索」引导态——不查询不展示列表,显示引导文案 + 三个分类入口 chips(全部/餐食/饮品)
  *   - 点击分类 chip(或选了原料后):立即查询展示;chips 上出现选中态
- *   - 已选原料:searchDishesByIngredients(selectedNames, {mode});t-switch 切「有交集即可 / 完全匹配」;
+ *   - 已选原料:matchDishesByIngredients(dishesSnapshot, selected, {mode}) 内存快照匹配;t-switch 切「有交集即可 / 完全匹配」;
  *     点击卡片 → t-dialog「就做这道?」→ addCookRecord 落账 → toast「已记录」→ 刷新今日卡
  *   - 未选原料但已选分类:listDishes 按分类浏览(新增 category 条件),触底翻页
  *   - 取消勾选全部原料后回到「未搜索」引导态
@@ -16,6 +16,9 @@
  *   spin-wheel 组件,「开始旋转」调组件 spin()(旋转中按钮置灰);spinend 高亮停留 800ms
  *   后先收转盘再弹结果(F17,绕开 dialog 与 popup 平叠 z-index 不生效问题),
  *   「就吃它了」落账 /「换一个」关结果重开转盘再转
+ * - 菜品全量内存快照(dishesSnapshot):onShow 时若脏则重拉,「点原料→匹配」走内存匹配(0ms);
+ *   onHide 置脏,切 tab / 从编辑页返回都走 onShow 重拉,保证匹配用最新数据;
+ *   下拉刷新强制重拉(多设备一致性:家人任一手机改库后下拉即最新)
  * - onShow 静默刷新今日记录(tab 切回数据最新)
  * 数据库操作一律走 api/db.js 封装,页面不直接调用 wx.cloud。
  */
@@ -23,9 +26,10 @@ import useToastBehavior from '../../behaviors/useToast.js';
 import {
   addCookRecord,
   dateKey,
+  fetchAllDishes,
   listDishes,
   listIngredients,
-  searchDishesByIngredients,
+  matchDishesByIngredients,
   todayRecords,
   undoLastTodayRecord,
   DISH_CARD_FIELDS,
@@ -93,15 +97,26 @@ Page({
     this.searchTimer = null; // 原料搜索防抖定时器
     this.firstShow = true; // 首次 onShow 不重复刷新
     this.requestSeq = 0; // 请求序号:快速切换条件时丢弃过期响应
+    this.dishesSnapshot = null; // 菜品全量内存快照(匹配用,onShow 按需拉取)
+    this.dishesSnapshotDirty = true; // 快照脏标记:onHide 置 true,onShow 重拉
     this.init();
   },
 
   onShow() {
+    // 快照脏时重拉(冷启动 / tab 切回 / 编辑页返回),保证匹配用最新菜品数据
+    if (this.dishesSnapshotDirty) {
+      this.refreshDishesSnapshot();
+    }
     // 非首次进入(tab 切回)静默刷新今日记录,保证数据最新
     if (!this.firstShow) {
       this.refreshToday(true);
     }
     this.firstShow = false;
+  },
+
+  onHide() {
+    // 离开首页(切 tab / 进详情、编辑页等):快照置脏,下次 onShow 重拉
+    this.dishesSnapshotDirty = true;
   },
 
   onUnload() {
@@ -120,6 +135,36 @@ Page({
     this.refreshMatch(seq, false);
     await Promise.all([this.loadIngredients(''), this.refreshToday(false)]);
     if (seq === this.requestSeq) this.setData({ loading: false });
+  },
+
+  /** 拉取菜品全量内存快照(「点原料→匹配」0ms 的基础);失败保留旧快照并保持脏标记,
+   *  下次 onShow / 下拉刷新自动重试。快照就绪后若已选原料则静默重跑匹配:
+   *  用户在快照加载期间点选原料时 refreshMatch 已先置 loading,这里兜底渲染结果
+   *  (silent:下拉刷新时不闪骨架;成功路径本身会复位 loading) */
+  async refreshDishesSnapshot() {
+    try {
+      // force:整页刷新时机(onShow / 下拉刷新)强制穿透双层缓存直查云库,成功后回填两层
+      const dishes = await fetchAllDishes({ force: true });
+      this.dishesSnapshot = dishes;
+      this.dishesSnapshotDirty = false;
+      if (this.data.selectedNames.length > 0) {
+        this.refreshMatch(this.nextSeq(), true);
+      }
+    } catch (err) {
+      console.error('菜品快照加载失败', err);
+    }
+  },
+
+  /** 下拉刷新:强制重拉菜品快照 + 今日记录 + 原料 chips(静默,不闪骨架) */
+  async onPullDownRefresh() {
+    this.dishesSnapshotDirty = true; // 主动刷新,无视 onHide 置脏时机,直接重拉
+    await Promise.all([
+      this.refreshDishesSnapshot(),
+      this.refreshToday(true),
+      // force:下拉刷新属整页刷新时机,原料 chips 也要拿云库最新(家人改过原料后下拉即见)
+      this.loadIngredients(this.data.ingredientKeyword, true),
+    ]);
+    wx.stopPullDownRefresh();
   },
 
   /* ---------------- 今日已定 ---------------- */
@@ -184,10 +229,11 @@ Page({
     this.loadIngredients('');
   },
 
-  /** 加载原料 chips:排除调料(isSeasoning);已选原料保证可见(过滤结果外补到尾部) */
-  async loadIngredients(kw) {
+  /** 加载原料 chips:排除调料(isSeasoning);已选原料保证可见(过滤结果外补到尾部)。
+   *  force=true 强制穿透缓存(进入/下拉刷新等整页刷新时机),搜索防抖走缓存不穿透 */
+  async loadIngredients(kw, force = false) {
     try {
-      const ingredients = await listIngredients(kw);
+      const ingredients = await listIngredients(kw, { force });
       const selected = this.data.selectedNames;
       const chips = [];
       ingredients.forEach((item) => {
@@ -257,7 +303,7 @@ Page({
   /**
    * 刷新匹配列表(按需展示):
    * - 未搜索引导态(未选原料且未选分类):不查询、不展示列表,仅显示引导文案 + 分类入口
-   * - 已选原料:searchDishesByIngredients(selectedNames, {mode}) 一次性返回全部,带匹配度
+   * - 已选原料:matchDishesByIngredients(dishesSnapshot, selected, {mode}) 内存匹配,带匹配度
    * - 未选原料但已选分类:listDishes 按分类浏览(新增 category 条件),支持触底翻页
    */
   async refreshMatch(seq, silent) {
@@ -275,6 +321,13 @@ Page({
       });
       return;
     }
+    // 已选原料但快照未就绪(首次加载 / 下拉刷新中):loading 兜底,
+    // 快照就绪后 refreshDishesSnapshot 会自动重跑匹配(此处 return 在 try 之前,避免 finally 复位 loading)
+    if (this.data.selectedNames.length > 0 && !this.dishesSnapshot) {
+      if (seq !== this.requestSeq) return;
+      this.setData({ loading: true });
+      return;
+    }
     if (!silent) this.setData({ loading: true });
     let cards = [];
     let hasMore = false;
@@ -284,7 +337,8 @@ Page({
     try {
       const selected = this.data.selectedNames;
       if (selected.length > 0) {
-        const dishes = await searchDishesByIngredients(selected, {
+        // 内存快照匹配(0ms):直查架构下全量已在快照中,避免每次点原料打库
+        const dishes = matchDishesByIngredients(this.dishesSnapshot, selected, {
           mode: this.data.completeMode ? 'complete' : 'partial',
         });
         cards = this.buildMatchCards(dishes, true);
@@ -439,7 +493,7 @@ Page({
 
   /**
    * 打开转盘弹层:组装候选 = 当前匹配结果(未选原料时 = 全部菜品)。
-   * 已选原料时 matchList 即 searchDishesByIngredients 的全量结果;
+   * 已选原料时 matchList 即内存快照匹配的全量结果;
    * 未选原料时列表只加载第一页,这里循环拉全量作为候选。
    */
   async openWheel() {

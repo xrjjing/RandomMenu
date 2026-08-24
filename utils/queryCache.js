@@ -1,11 +1,12 @@
 /**
  * utils/queryCache.js
- * 内存级 TTL 查询缓存(家庭量级:小程序进程存活期内有效)。
+ * 内存级 TTL 查询缓存:双层缓存中的 L1(小程序进程存活期内有效)。
  * 使用场景:
- * - 列表类查询(原料/匹配/今日记录)TTL 30s、详情类(getDish)TTL 60s,
- *   避免同一查询在短时间内重复打库;
- * - 写库操作(saveDish/removeDish/落账等)完成后调用 markDirty() 全量失效,保证数据一致性;
- * - key 由调用方用 JSON.stringify(查询参数盐) 生成,不同参数互不串扰。
+ * - 集合类查询(dishes / ingredients)默认 TTL 60s,同一查询短时间内不重复打库,
+ *   页面内连续交互(搜索防抖/筛选/翻页)直接命中;
+ * - 写库操作(saveDish/removeDish/ensureIngredient/rename/removeIngredient/addCookRecord)
+ *   成功后调用 markDirty() 全量失效,保证数据一致性;
+ * - key 由调用方生成(loadCollection 用 JSON 键),不同集合互不串扰。
  * 注意:缓存值若为数组,get 时返回浅拷贝,防止调用方误改污染缓存。
  */
 export class QueryCache {
@@ -38,19 +39,12 @@ export class QueryCache {
    * 写入缓存。
    * @param {string} key 缓存键(由 keyOf 生成)
    * @param {*} value 缓存值
-   * @param {number} [ttlMs=300000] 过期毫秒数,默认 5 分钟
+   * @param {number} [ttlMs=60000] 过期毫秒数,默认 60 秒
    * @returns {*} 原样返回 value,便于链式 return
    */
-  set(key, value, ttlMs = 5 * 60 * 1000) {
+  set(key, value, ttlMs = 60 * 1000) {
     this.store.set(key, { value, expireAt: this.now() + ttlMs });
     return value;
-  }
-
-  /** 按键前缀失效(如只让某道菜详情失效);当前调用方多走 markDirty 全清 */
-  invalidate(prefix) {
-    for (const key of this.store.keys()) {
-      if (key.startsWith(prefix)) this.store.delete(key);
-    }
   }
 
   /** 写库后全量清空:家庭量级缓存条目有限,全清最简单可靠 */

@@ -42,7 +42,8 @@ Page({
     this.usageMap = new Map();
     this.searchTimer = null;
     this.highlightTimer = null;
-    this.refresh();
+    // 进入页面属整页刷新时机:强制穿透缓存直查云库,家人改过原料后进入即最新
+    this.refresh(true);
   },
 
   onUnload() {
@@ -50,12 +51,13 @@ Page({
     if (this.highlightTimer) clearTimeout(this.highlightTimer);
   },
 
-  /** 统一刷新:并行拉原料列表与使用次数统计,再组装展示行 */
-  async refresh() {
+  /** 统一刷新:并行拉原料列表与使用次数统计,再组装展示行。
+   *  force=true 强制穿透缓存(进入页面/整页刷新);搜索防抖/操作后刷新走缓存(markDirty 已失效) */
+  async refresh(force = false) {
     this.setData({ loading: true });
     try {
       const [ingredients, usage] = await Promise.all([
-        listIngredients(this.data.keyword),
+        listIngredients(this.data.keyword, { force }),
         ingredientUsage(),
       ]);
       this.usageMap = new Map(usage.map((item) => [item.name, item.count]));
