@@ -51,6 +51,10 @@ function setupMockWx(initialData = {}) {
     let skipN = 0;
     let limitN = Infinity;
     const q = {
+      // orderBy 仅保证链式可用(排序由调用方 JS 层完成),mock 不真排序
+      orderBy() {
+        return q;
+      },
       skip(n) {
         skipN = n;
         return q;

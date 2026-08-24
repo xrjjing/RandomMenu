@@ -56,6 +56,9 @@ async function fetchAll(collectionName, where = {}) {
     const res = await db
       .collection(collectionName)
       .where(where)
+      // 分页必须有稳定排序:无 orderBy 时 skip/limit 的窗口不保证连续,
+      // 会漏文档(实测多设备/新增文档落在窗口外,列表缺菜且查重却能命中)
+      .orderBy('_id', 'asc')
       .skip(skip)
       .limit(PAGE_SIZE)
       .get();
