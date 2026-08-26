@@ -89,7 +89,7 @@ test('upload:isBuiltinImageMapComplete 完整性判断(纯函数)', () => {
   assert.equal(upload.isBuiltinImageMapComplete(null), false);
   assert.equal(upload.isBuiltinImageMapComplete({}), false);
   const names = BUILTIN_IMAGE_NAMES;
-  assert.equal(names.length, 80, '内置菜名清单应覆盖全部 80 道菜');
+  assert.equal(names.length, 180, '内置菜名清单应覆盖全部 180 道菜(80 旧 + 100 新)');
   const full = Object.fromEntries(names.map((n) => [n, 'cloud://builtin/x.jpg']));
   assert.equal(upload.isBuiltinImageMapComplete(full), true);
   const partial = { ...full };

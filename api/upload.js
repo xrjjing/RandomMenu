@@ -9,6 +9,20 @@ import builtinData from '../data/builtin-dishes.js';
 /** 内置图菜名清单(云映射的键基准;主包瘦身后本地源已移除,菜名唯一来自内置数据) */
 const BUILTIN_IMAGE_NAMES = builtinData.dishes.map((dish) => dish.name);
 
+/** 内置图本地源目录(代码包内;目录删除后 access 失败即跳过,代码无需回滚) */
+const LOCAL_IMAGE_DIR = 'static/images-new';
+
+/** 探测代码包内本地图片是否存在(存在才走真实上传,不存在跳过) */
+function hasLocalImage(name) {
+  return new Promise((resolve) => {
+    wx.getFileSystemManager().access({
+      path: `${LOCAL_IMAGE_DIR}/${name}.jpg`,
+      success: () => resolve(true),
+      fail: () => resolve(false),
+    });
+  });
+}
+
 /** 内置图上传并发批次大小(每批同时上传 5 张,避免瞬时并发过高) */
 const UPLOAD_BATCH_SIZE = 5;
 
@@ -223,13 +237,18 @@ export async function uploadBuiltinImages({ onProgress } = {}) {
             // 已上云的菜直接沿用(重试只补缺失,不重复上传)
             resultMap[name] = existing[name];
           } else {
-            // 本地源已移除:无有效 filePath,此分支注定失败(保留结构便于恢复本地源后重试)
-            const res = await wx.cloud.uploadFile({
-              cloudPath: `builtin/${name}.jpg`,
-              filePath: '',
-            });
-            resultMap[name] = res.fileID;
-            uploadedCount += 1;
+            // 本地源(static/images-new/菜名.jpg,代码包内):存在则真实上传,无源计入 failed 便于补源重试
+            const localPath = `${LOCAL_IMAGE_DIR}/${name}.jpg`;
+            if (await hasLocalImage(name)) {
+              const res = await wx.cloud.uploadFile({
+                cloudPath: `builtin/${name}.jpg`,
+                filePath: localPath,
+              });
+              resultMap[name] = res.fileID;
+              uploadedCount += 1;
+            } else {
+              failed.push(name);
+            }
           }
         } catch (err) {
           console.error('内置图上传失败', name, err);

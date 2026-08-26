@@ -44,11 +44,11 @@ Page({
     this.setData({ importing: true });
     this.progressTitle = '';
     // 先给初始 loading(原料 ensure 阶段较长,避免无反馈),onProgress 里更新精确进度
-    wx.showLoading({ title: '正在导入…', mask: true });
+    wx.showLoading({ title: '导入中…', mask: true });
     try {
       const res = await importBuiltinData({
         onProgress: (done, total) => {
-          const title = `正在导入 ${done}/${total}`;
+          const title = `导入 ${done}/${total}`;
           // title 未变化时跳过,避免高频 showLoading 造成闪烁
           if (this.progressTitle !== title) {
             this.progressTitle = title;
@@ -84,7 +84,7 @@ Page({
         return;
       }
       this.progressTitle = '';
-      wx.showLoading({ title: '正在上传 0/80', mask: true });
+      wx.showLoading({ title: '正在上传 0/180', mask: true });
       const res = await uploadBuiltinImages({
         onProgress: (done, total) => {
           const title = `正在上传 ${done}/${total}`;
