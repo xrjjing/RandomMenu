@@ -16,6 +16,7 @@ import { chooseAndUploadImages, deleteImages } from '../../api/upload.js';
 import { normalizeName } from '../../utils/normalize.js';
 import { SEASONING_SET } from '../../utils/seasonings.js';
 import { isCloudFileId } from '../../utils/image.js';
+import { resolveImgUrls } from '../../utils/imgUrl.js';
 
 /** 每菜图片上限 */
 const MAX_IMAGES = 5;
@@ -52,7 +53,8 @@ Page({
     cookTimeOptions: COOK_TIME_OPTIONS.map((v) => ({ label: v, value: v })),
     difficultyOptions: DIFFICULTY_OPTIONS.map((v) => ({ label: v, value: v })),
     MAX_IMAGES, // 图片上限(供 wxml 展示)
-    images: [], // 图片 fileID 列表(缩略图九宫格)
+    images: [], // 图片 fileID 列表(数据源:保存写库/删除清理用,保持原 cloud:// fileID)
+    displayImages: [], // 缩略图显示列表(images 换链后的 https 临时链接,仅展示用)
     ingredients: [], // 已选原料 [{id?, name, amount, isSeasoning}]
     steps: [{ id: 0, text: '' }], // 做法步骤 [{id, text}]
     popupVisible: false, // 原料选择弹层
@@ -118,6 +120,8 @@ Page({
         steps,
         loading: false,
       });
+      // 回显缩略图换链(非创建者手机也能看到已有图片)
+      this.setData({ displayImages: await resolveImgUrls(this.data.images) });
     } catch (err) {
       console.error('菜品加载失败', err);
       this.setData({ loading: false });
@@ -217,6 +221,8 @@ Page({
       const { fileIds, rejected } = await chooseAndUploadImages(this.data.images.length, MAX_IMAGES);
       if (fileIds.length) {
         this.setData({ images: this.data.images.concat(fileIds) });
+        // 新增图即时换链补进显示列表(其余走缓存,零额外调用)
+        this.setData({ displayImages: this.data.displayImages.concat(await resolveImgUrls(fileIds)) });
       }
       if (rejected.length) {
         this.onShowToast('#t-toast', `${rejected.length} 张超过 1M 无法压缩，已跳过`);
@@ -230,9 +236,9 @@ Page({
   /** 点击缩略图:全屏预览 */
   onPreviewImage(e) {
     const { index } = e.currentTarget.dataset;
-    const { images } = this.data;
-    if (images.length === 0) return;
-    wx.previewImage({ current: images[index], urls: images });
+    const { displayImages } = this.data;
+    if (displayImages.length === 0) return;
+    wx.previewImage({ current: displayImages[index], urls: displayImages });
   },
 
   /** 缩略图右上 ✕:从列表移除,记录云存储 fileID 待保存成功后清理(本地静态路径不属于云存储,不清理) */
@@ -241,7 +247,9 @@ Page({
     const images = this.data.images.slice();
     const [removed] = images.splice(index, 1);
     if (removed && isCloudFileId(removed)) this.removedFileIds.push(removed);
-    this.setData({ images });
+    const displayImages = this.data.displayImages.slice();
+    displayImages.splice(index, 1);
+    this.setData({ images, displayImages });
   },
 
   /* ---------------- 原料 ---------------- */

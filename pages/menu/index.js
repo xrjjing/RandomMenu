@@ -15,6 +15,7 @@ import useToastBehavior from '../../behaviors/useToast.js';
 import { listDishes, DISH_CARD_FIELDS } from '../../api/db.js';
 import { sortMenuDishes } from '../../utils/menuSort.js';
 import { orderDishImages } from '../../utils/image.js';
+import { resolveImgUrls } from '../../utils/imgUrl.js';
 
 /** 每页条数(与云数据库客户端单次 limit 上限一致) */
 const PAGE_SIZE = 20;
@@ -180,8 +181,10 @@ Page({
       const sorted = await this.loadAllSortedDishes(seq, force);
       if (seq !== this.requestSeq || !sorted) return;
       this.fullList = sorted; // 全量排序结果,供触底翻页本地切片
+      const firstPageCards = await this.buildCards(sorted.slice(0, PAGE_SIZE));
+      if (seq !== this.requestSeq) return; // 换链 await 期间发生新刷新/条件变化,丢弃过期结果
       this.setData({
-        list: this.buildCards(sorted.slice(0, PAGE_SIZE)),
+        list: firstPageCards,
         page: 1,
         hasMore: sorted.length > PAGE_SIZE,
         hasFilter: !!(this.data.keyword || this.data.selectedTags.length),
@@ -197,9 +200,10 @@ Page({
     }
   },
 
-  /** 把菜品文档组装为展示卡片:封面(云端第一张图 → 内置静态图 → 分类 emoji)、原料标签、徽章、内置角标 */
-  buildCards(dishes) {
-    return dishes.map((dish) => {
+  /** 把菜品文档组装为展示卡片:封面(云端第一张图 → 内置静态图 → 分类 emoji)、原料标签、徽章、内置角标
+   *  封面 cloud:// fileID 需换链为 https 临时链接后才能在非创建者手机上显示,批量一次换链 */
+  async buildCards(dishes) {
+    const cards = dishes.map((dish) => {
       const names = dish.ingredientNames || [];
       // 封面优先级:云端第一张图(排序后数组首位)→ 内置静态图(seed 已写入 images)→ 分类 emoji 占位
       const cover = orderDishImages(dish.images)[0] || '';
@@ -216,6 +220,12 @@ Page({
         isBuiltin: !!dish.isBuiltin,
       };
     });
+    // cloud:// 封面批量换链(缓存命中时零调用);换链失败回空串走 emoji 兜底
+    const covers = await resolveImgUrls(cards.map((c) => c.cover));
+    cards.forEach((c, i) => {
+      if (c.cover) c.cover = covers[i];
+    });
+    return cards;
   },
 
   /** 大类切换:重置已选标签并重新聚合细分标签,刷新第一页 */
@@ -294,7 +304,7 @@ Page({
       const slice = sorted.slice((nextPage - 1) * PAGE_SIZE, nextPage * PAGE_SIZE);
       if (seq !== this.requestSeq) return; // 期间发生刷新/条件变化,丢弃过期翻页
       this.setData({
-        list: this.data.list.concat(this.buildCards(slice)),
+        list: this.data.list.concat(await this.buildCards(slice)),
         page: nextPage,
         hasMore: nextPage * PAGE_SIZE < sorted.length,
       });

@@ -67,7 +67,7 @@
     <view class="card form-card">
       <view class="form-label">图片（最多 {{MAX_IMAGES}} 张）</view>
       <view class="image-grid">
-        <view class="image-cell" wx:for="{{images}}" wx:key="*this">
+        <view class="image-cell" wx:for="{{displayImages}}" wx:key="*this">
           <image
             class="image-thumb"
             src="{{item}}"

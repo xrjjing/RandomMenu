@@ -14,6 +14,7 @@ import useToastBehavior from '../../behaviors/useToast.js';
 import { getDish, removeDish } from '../../api/db.js';
 import { SEASONING_SET } from '../../utils/seasonings.js';
 import { orderDishImages } from '../../utils/image.js';
+import { resolveImgUrls } from '../../utils/imgUrl.js';
 
 Page({
   behaviors: [useToastBehavior],
@@ -55,7 +56,9 @@ Page({
     try {
       const dish = await getDish(this.data.id);
       // 图片:云端 fileID 在前、内置静态图在后(置顶判断,用户上传图不被内置占位图顶掉),空值剔除
-      const images = orderDishImages(dish.images);
+      // cloud:// 换链为 https 临时链接后显示(非创建者手机也能看);dish 对象保留原 fileID 不动
+      // 换链失败的项回 ''——这里过滤后再 setData,避免轮播渲染空白页(应回落到 emoji 占位)
+      const images = (await resolveImgUrls(orderDishImages(dish.images))).filter(Boolean);
       // 原料明细兜底:老数据可能只有 ingredientNames 无用量明细
       const ingredients =
         dish.ingredients && dish.ingredients.length

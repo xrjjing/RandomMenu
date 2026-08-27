@@ -37,6 +37,7 @@ import {
 import { SEASONING_SET } from '../../utils/seasonings.js';
 import { normalizeName } from '../../utils/normalize.js';
 import { orderDishImages } from '../../utils/image.js';
+import { resolveImgUrls } from '../../utils/imgUrl.js';
 
 /** 每页条数(与云数据库客户端单次 limit 上限一致) */
 const PAGE_SIZE = 20;
@@ -372,9 +373,9 @@ Page({
           });
           const kwIds = new Set(dishes.map((dish) => dish._id));
           dishes = selectedDishes.filter((dish) => kwIds.has(dish._id));
-          cards = this.buildMatchCards(dishes, true);
+          cards = await this.buildMatchCards(dishes, true);
         } else {
-          cards = this.buildMatchCards(dishes, false);
+          cards = await this.buildMatchCards(dishes, false);
         }
         emptyText = '没有找到相关菜品';
         wheelDisabled = cards.length === 0; // 候选为空时禁用转盘入口
@@ -383,7 +384,7 @@ Page({
         const dishes = matchDishesByIngredients(this.dishesSnapshot, selected, {
           mode: this.data.completeMode ? 'complete' : 'partial',
         });
-        cards = this.buildMatchCards(dishes, true);
+        cards = await this.buildMatchCards(dishes, true);
         emptyText = '没有用这些原料能做出来的菜，换个搭配试试';
         wheelDisabled = cards.length === 0; // 候选为空时禁用转盘入口
       } else {
@@ -393,7 +394,7 @@ Page({
           pageSize: PAGE_SIZE,
           field: DISH_CARD_FIELDS,
         });
-        cards = this.buildMatchCards(res.list, false);
+        cards = await this.buildMatchCards(res.list, false);
         hasMore = res.hasMore;
         wheelDisabled = res.total === 0; // 先按该分类是否有菜判断,空时再探测全库
         if (res.total === 0) {
@@ -440,9 +441,10 @@ Page({
     }
   },
 
-  /** 组装匹配卡片:复用菜谱列表页卡片风格,附匹配度百分比徽章(未选原料时不显示) */
-  buildMatchCards(dishes, withScore) {
-    return dishes.map((dish) => {
+  /** 组装匹配卡片:复用菜谱列表页卡片风格,附匹配度百分比徽章(未选原料时不显示)
+   *  封面 cloud:// fileID 批量换链为 https 临时链接后才能在非创建者手机上显示 */
+  async buildMatchCards(dishes, withScore) {
+    const cards = dishes.map((dish) => {
       const names = dish.ingredientNames || [];
       // 封面优先级:云端第一张图(排序后数组首位)→ 内置静态图(seed 已写入 images)→ 分类 emoji 占位
       const cover = orderDishImages(dish.images)[0] || '';
@@ -466,6 +468,12 @@ Page({
         score,
       };
     });
+    // cloud:// 封面批量换链(缓存命中时零调用);换链失败回空串走 emoji 兜底
+    const covers = await resolveImgUrls(cards.map((c) => c.cover));
+    cards.forEach((c, i) => {
+      if (c.cover) c.cover = covers[i];
+    });
+    return cards;
   },
 
   /** 点击匹配卡片:打开「就做这道?」确认弹层 */
