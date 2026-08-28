@@ -5,11 +5,13 @@
  * - AI 生图 / 生文开关(即时保存,setAiConfig 整组覆盖防误关另一开关)
  * - AI 报菜员入口(textEnabled 时显示,跳 summary 页)
  * - AI 补图弹层(imageEnabled 时显示):无图菜列表逐个生成/采用,一次会话最多 10 张
+ * - F28 提示词区块:生图词根/推荐/小结/做法 四个提示词,单套可编辑 + 逐项恢复默认
  * 逻辑原样迁自 packages/family/index.js,方法名/数据字段保持一致。
  */
 import useToastBehavior from '../../behaviors/useToast.js';
 import { ensureIdentity, isFamilyAdmin } from '../../api/identity.js';
 import { getAiConfig, setAiConfig } from './config.js';
+import { DEFAULT_PROMPTS, PROMPT_LIMITS } from './prompts.js';
 import { fetchAllDishes } from '../../api/db.js';
 import { generateDishImage, attachImageToDish } from './api.js';
 import { resolveImgUrls } from '../../utils/imgUrl.js';
@@ -29,6 +31,16 @@ Page({
     // AI 补图弹层
     repairPopupVisible: false,
     repairItems: [], // 无图菜列表 [{_id, name, genLoading, previewUrl, previewFileId, error}]
+    // F28 提示词管理(单套可编辑):四文本域 + 逐项恢复默认 + 底部保存
+    prompts: { ...DEFAULT_PROMPTS }, // 当前编辑中的提示词(init 时从 config 拉取)
+    promptLimits: PROMPT_LIMITS, // 供 wxml maxlength
+    promptSaving: false, // 保存中(防重复)
+    promptFields: [
+      { key: 'imageStyle', label: '生图风格词根', placeholder: '追加在生图描述后,保证真实菜品照片' },
+      { key: 'suggest', label: 'AI 推荐', placeholder: '定菜助手的 system 提示词' },
+      { key: 'summary', label: 'AI 小结', placeholder: '报菜员的 system 提示词' },
+      { key: 'recipe', label: 'AI 写做法', placeholder: '做法草稿的 system 提示词' },
+    ],
   },
 
   onLoad() {
@@ -58,7 +70,11 @@ Page({
   async loadAiConfig() {
     try {
       const cfg = await getAiConfig();
-      this.setData({ aiImageEnabled: cfg.imageEnabled, aiTextEnabled: cfg.textEnabled });
+      this.setData({
+        aiImageEnabled: cfg.imageEnabled,
+        aiTextEnabled: cfg.textEnabled,
+        prompts: cfg.prompts, // F28:已归一化,缺失字段已被内置默认填充
+      });
       // 自愈:历史数据可能存在「子开关开但总开关关」的死锁,按派生语义重写一次
       const derived = cfg.imageEnabled || cfg.textEnabled;
       if (derived && !cfg.aiEnabled) {
@@ -101,6 +117,42 @@ Page({
   /** 跳转 AI 报菜员小结页(仅 textEnabled 时入口可见) */
   onSummaryTap() {
     wx.navigateTo({ url: '/packages/ai/summary' });
+  },
+
+  /* ---------------- 提示词管理(F28,单套可编辑) ---------------- */
+
+  /** 提示词文本域输入:data-key 区分字段 */
+  onPromptInput(e) {
+    const { key } = e.currentTarget.dataset;
+    this.setData({ [`prompts.${key}`]: e.detail.value });
+  },
+
+  /** 恢复默认:把该字段填回内置默认值(仅改编辑态,点保存才落库) */
+  onPromptReset(e) {
+    const { key } = e.currentTarget.dataset;
+    this.setData({ [`prompts.${key}`]: DEFAULT_PROMPTS[key] });
+  },
+
+  /** 保存提示词:非空校验(空串回退由读取侧兼底,但保存时拦截更直观)→ setAiConfig(写后缓存已失效) */
+  async onSavePrompts() {
+    if (this.data.promptSaving) return;
+    const { prompts } = this.data;
+    const emptyKey = Object.keys(prompts).find((key) => !String(prompts[key] || '').trim());
+    if (emptyKey) {
+      this.onShowToast('#t-toast', '提示词不能为空');
+      return;
+    }
+    this.setData({ promptSaving: true });
+    try {
+      const cfg = await setAiConfig({ prompts });
+      // 以归一化后的值回填(去首尾空白),缓存已被 setAiConfig 清空
+      this.setData({ promptSaving: false, prompts: cfg.prompts });
+      this.onShowToast('#t-toast', '提示词已保存');
+    } catch (err) {
+      console.error('提示词保存失败', err);
+      this.setData({ promptSaving: false });
+      this.onShowToast('#t-toast', err.message || '保存失败，请重试');
+    }
   },
 
   /* ---------------- AI 补图 ---------------- */

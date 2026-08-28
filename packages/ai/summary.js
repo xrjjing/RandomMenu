@@ -12,10 +12,7 @@ import { statsAggregate, upcomingRecords, dateKey } from '../../api/db.js';
 import { getAiConfig } from './config.js';
 import { generateText } from './text.js';
 
-/** system 角色固定约束:禁止编造,轻松口语化,120 字内 */
-const SYSTEM_PROMPT =
-  '你是家庭菜谱小程序的AI报菜员。只能使用用户提供的数据,禁止编造数据之外的菜名或数字;'
-  + '用轻松口语化中文,120字内,结尾可给1条轻建议。';
+// F28:system 提示词运行时从 config 取(cfg.prompts.summary,空串/缺失由 normalizePrompts 兜底内置默认)
 
 Page({
   behaviors: [useToastBehavior],
@@ -64,8 +61,9 @@ Page({
           明天: (upcoming.tomorrow || []).map((r) => r.dishName),
         },
       });
+      const cfg = await getAiConfig(); // 60s 内存缓存,重复读开销极低
       const text = await generateText([
-        { role: 'system', content: SYSTEM_PROMPT },
+        { role: 'system', content: cfg.prompts.summary },
         { role: 'user', content: dataText },
       ]);
       this.setData({ loading: false, summaryText: text });

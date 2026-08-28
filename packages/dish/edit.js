@@ -19,6 +19,8 @@ import { isCloudFileId } from '../../utils/image.js';
 import { resolveImgUrls } from '../../utils/imgUrl.js';
 import { getAiConfig } from '../ai/config.js';
 import { generateDishImage, attachImageToDish } from '../ai/api.js';
+import { generateRecipeDraft } from '../ai/recipe.js';
+import { DEFAULT_PROMPTS, buildImagePrompt } from '../ai/prompts.js';
 
 /** 每菜图片上限 */
 const MAX_IMAGES = 5;
@@ -71,6 +73,10 @@ Page({
     aiPreviewUrl: '', // 生成图预览临时链接(fileID 换链后)
     aiPreviewFileId: '', // 生成图 cloud:// fileID(采用时写入 dishes.images)
     aiError: '', // 生成/采用失败文案(卡片内红字)
+    aiRecipeEnabled: false, // AI 写做法入口开关(仅编辑模式拉取,跟 textEnabled)
+    recipePopupVisible: false, // AI 写做法确认弹层
+    recipeHint: '', // 补充"特色/要点"(可跳过)
+    recipeGenerating: false, // 生成中(防重复)
   },
 
   onLoad(options) {
@@ -85,9 +91,9 @@ Page({
     if (id) {
       wx.setNavigationBarTitle({ title: '编辑菜品' });
       this.loadDish(id);
-      // AI 生图入口开关(失败按 false,不弹错误)
+      // AI 生图入口开关(失败按 false,不弹错误);F28:同时拉生文开关控制「AI 写做法」入口
       getAiConfig()
-        .then((cfg) => this.setData({ aiImageEnabled: cfg.imageEnabled }))
+        .then((cfg) => this.setData({ aiImageEnabled: cfg.imageEnabled, aiRecipeEnabled: cfg.textEnabled }))
         .catch(() => {});
     } else {
       wx.setNavigationBarTitle({ title: '新增菜品' });
@@ -415,12 +421,20 @@ Page({
 
   /* ---------------- AI 生图 ---------------- */
 
-  /** 打开 AI 生图弹层:预填菜名 + 固定风格后缀,用户可改 */
-  onOpenAiPopup() {
+  /** 打开 AI 生图弹层:预填菜名 + 固定风格后缀 + 可编辑风格词根(F28 改读 config),用户可改 */
+  async onOpenAiPopup() {
+    const base = `${this.data.name}美食摄影,俯拍,自然光,真实风格`;
+    let style = DEFAULT_PROMPTS.imageStyle;
+    try {
+      const cfg = await getAiConfig();
+      style = cfg.prompts.imageStyle;
+    } catch (err) {
+      // 读配置失败按内置默认词根,不阻断弹层打开
+    }
     this.setData({
       aiPopupVisible: true,
       aiError: '',
-      aiPrompt: `${this.data.name}美食摄影,俯拍,自然光,真实风格`,
+      aiPrompt: buildImagePrompt(base, style),
     });
   },
 
@@ -485,6 +499,79 @@ Page({
   /** 放弃:关弹层并清预览(仅页面态,不删云存储文件,由用户在图库自行清理) */
   onAiDiscard() {
     this.setData({ aiPopupVisible: false, aiPreviewUrl: '', aiPreviewFileId: '', aiError: '' });
+  },
+
+  /* ---------------- AI 写做法(F28,草稿定位) ---------------- */
+
+  /** 打开确认弹层:展示将使用的菜名,可补充要点后生成 */
+  onOpenRecipePopup() {
+    this.setData({ recipePopupVisible: true, recipeHint: '', aiError: '' });
+  },
+
+  /** 确认弹层遮罩关闭 */
+  onRecipePopupVisibleChange(e) {
+    if (!e.detail.visible) this.setData({ recipePopupVisible: false });
+  },
+
+  /** 补充要点输入 */
+  onRecipeHintChange(e) {
+    this.setData({ recipeHint: e.detail.value });
+  },
+
+  /** 取消:关弹层 */
+  onRecipeCancel() {
+    this.setData({ recipePopupVisible: false });
+  },
+
+  /** 生成:调 generateRecipeDraft,成功填入做法,失败 toast */
+  async onRecipeGenerate() {
+    if (this.data.recipeGenerating) return;
+    const name = (this.data.name || '').trim();
+    if (!name) {
+      this.onShowToast('#t-toast', '请先填写菜名');
+      return;
+    }
+    this.setData({ recipeGenerating: true });
+    try {
+      const res = await generateRecipeDraft(name, this.data.recipeHint);
+      if (!res.ok) {
+        this.setData({ recipeGenerating: false });
+        this.onShowToast('#t-toast', res.error || '生成失败，请重试');
+        return;
+      }
+      this.setData({ recipeGenerating: false, recipePopupVisible: false });
+      this.applyRecipeDraft(res.text);
+    } catch (err) {
+      // 理论上 recipe.js 已收口,防御性兜底
+      console.error('AI 写做法失败', err);
+      this.setData({ recipeGenerating: false });
+      this.onShowToast('#t-toast', '生成失败，请重试');
+    }
+  },
+
+  /** 把草稿按行拆入做法步骤;已有内容时先弹确认(用户确认才覆盖) */
+  applyRecipeDraft(text) {
+    const lines = String(text).split(/\n+/).map((l) => l.trim()).filter(Boolean);
+    if (!lines.length) {
+      wx.showToast({ title: '生成失败，请重试', icon: 'none' });
+      return;
+    }
+    const doApply = () => {
+      this.setData({ steps: lines.map((t) => ({ id: this.stepSeq++, text: t })) });
+      wx.showToast({ title: '已填入草稿', icon: 'none' });
+    };
+    const hasContent = this.data.steps.some((s) => s.text && s.text.trim());
+    if (!hasContent) {
+      doApply();
+      return;
+    }
+    wx.showModal({
+      title: '提示',
+      content: '将覆盖当前做法，确定吗？',
+      success: (res) => {
+        if (res.confirm) doApply();
+      },
+    });
   },
 
   /* ---------------- 保存 ---------------- */

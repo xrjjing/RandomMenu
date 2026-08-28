@@ -1,12 +1,16 @@
 /**
  * packages/ai/config.js(自 api/aiConfig.js 挪入分包,主包页面不直接引用,规避"主包未使用 JS"扫描告警 #51)
  * F26 AI 功能配置读写(app_meta 集合 _id='ai_config' 单文档)。
- * 结构:{ _id:'ai_config', aiEnabled, imageEnabled, textEnabled, expireAt }
+ * 结构:{ _id:'ai_config', aiEnabled, imageEnabled, textEnabled, expireAt, prompts }
+ * F28 扩展 prompts 字段(可编辑提示词,见 packages/ai/prompts.js):
+ * 无该字段/字段缺失 → 逐字段回退内置默认,存量文档零影响。
  * 读取侧默认全关:键不存在 / 字段缺失 / 查询异常 → 全 false,
  * 即 AI 到期或关闭后所有调用方拿到的都是全 false,页面层据此隐藏入口,小程序既有功能零影响。
  * 缓存:模块级内存缓存 TTL 60s;setAiConfig 写库成功后立即清缓存,管理页改完立即可见新值。
  * 注意:wx 引用一律放在函数内部,保证 node 环境 import 本文件不抛错。
  */
+
+import { normalizePrompts } from './prompts.js';
 
 const CONFIG_ID = 'ai_config';
 const TTL_MS = 60 * 1000;
@@ -28,6 +32,8 @@ function normalizeConfig(doc) {
     aiEnabled: ok && doc.aiEnabled === true,
     imageEnabled: ok && doc.imageEnabled === true,
     textEnabled: ok && doc.textEnabled === true,
+    // F28:提示词逐字段兜底(缺失/空串 → 内置默认),调用方拿到的四字段恒非空
+    prompts: normalizePrompts(ok ? doc.prompts : undefined),
   };
 }
 
@@ -73,6 +79,10 @@ export async function setAiConfig(patch) {
     imageEnabled,
     textEnabled,
   };
+  // F28:仅当 patch 显式携带 prompts 时才写入(update 是合并语义,不带 prompts 不会动库里的值)
+  if (patch.prompts) {
+    data.prompts = normalizePrompts(patch.prompts);
+  }
   const existing = await db.collection('app_meta').where({ _id: CONFIG_ID }).get();
   if (existing.data && existing.data.length > 0) {
     await db.collection('app_meta').doc(CONFIG_ID).update({ data });

@@ -6,6 +6,7 @@
     "t-switch": "tdesign-miniprogram/switch/switch",
     "t-button": "tdesign-miniprogram/button/button",
     "t-popup": "tdesign-miniprogram/popup/popup",
+    "t-textarea": "tdesign-miniprogram/textarea/textarea",
     "t-toast": "tdesign-miniprogram/toast/toast"
   }
 }

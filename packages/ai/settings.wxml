@@ -19,6 +19,27 @@
     </t-cell-group>
   </view>
 
+  <!-- F28 提示词区块:单套可编辑,保存实时生效;逐项恢复默认 -->
+  <view class="card section-card">
+    <view class="section-title">提示词</view>
+    <view class="ai-note">各 AI 功能使用的提示词,保存后实时生效;留空保存会被拦截,恢复默认可一键回退</view>
+    <view class="prompt-field" wx:for="{{promptFields}}" wx:key="key" wx:for-item="field">
+      <view class="prompt-field-head">
+        <text class="prompt-field-label">{{field.label}}</text>
+        <text class="prompt-reset" data-key="{{field.key}}" bind:tap="onPromptReset">恢复默认</text>
+      </view>
+      <t-textarea
+        value="{{prompts[field.key]}}"
+        placeholder="{{field.placeholder}}"
+        maxlength="{{promptLimits[field.key]}}"
+        autosize
+        data-key="{{field.key}}"
+        bind:change="onPromptInput"
+      />
+    </view>
+    <t-button block theme="primary" loading="{{promptSaving}}" bind:tap="onSavePrompts">保存提示词</t-button>
+  </view>
+
   <!-- AI 补图弹层(底部):无图菜列表,逐个生成/采用,一次弹层会话最多 10 张 -->
   <t-popup visible="{{repairPopupVisible}}" placement="bottom" bind:visible-change="onRepairPopupVisibleChange">
     <view class="option-popup repair-popup">

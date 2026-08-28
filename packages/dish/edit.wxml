@@ -103,9 +103,16 @@
       <t-button block variant="outline" bind:tap="openIngredientPopup">＋ 添加原料</t-button>
     </view>
 
-    <!-- 步骤编辑区:每步 textarea + 上移/下移/删除 + 添加步骤 -->
+    <!-- 步骤编辑区:每步 textarea + 上移/下移/删除 + 添加步骤;AI 写做法入口(草稿定位) -->
     <view class="card form-card">
-      <view class="form-label">做法步骤</view>
+      <view class="steps-head">
+        <view class="form-label">做法步骤</view>
+        <view
+          wx:if="{{aiRecipeEnabled}}"
+          class="ai-recipe-btn"
+          bind:tap="onOpenRecipePopup"
+        >✨ AI 写做法（草稿）</view>
+      </view>
       <view class="step-row" wx:for="{{steps}}" wx:key="id">
         <view class="step-index">{{index + 1}}</view>
         <view class="step-body">
@@ -243,6 +250,30 @@
         <t-button variant="outline" size="small" bind:tap="onAiDiscard">放弃</t-button>
       </view>
       <view wx:if="{{aiGenerating}}" class="ai-tip">生成中，约 10-30 秒…</view>
+    </view>
+  </t-popup>
+
+  <!-- AI 写做法确认弹层:展示菜名,可补充要点,可跳过 -->
+  <t-popup
+    visible="{{recipePopupVisible}}"
+    placement="center"
+    bind:visible-change="onRecipePopupVisibleChange"
+  >
+    <view class="ai-popup">
+      <view class="ai-popup-title">AI 写做法（草稿）</view>
+      <view class="recipe-dish">菜名：{{name}}</view>
+      <t-textarea
+        value="{{recipeHint}}"
+        placeholder="补充特色/要点（可跳过），如：少辣、用电饭煲"
+        maxlength="100"
+        autosize
+        bind:change="onRecipeHintChange"
+      />
+      <view class="ai-tip">生成后填入下方做法步骤，请核对修改后再保存</view>
+      <view class="ai-popup-btns">
+        <t-button variant="outline" size="small" disabled="{{recipeGenerating}}" bind:tap="onRecipeCancel">取消</t-button>
+        <t-button theme="primary" size="small" loading="{{recipeGenerating}}" bind:tap="onRecipeGenerate">生成</t-button>
+      </view>
     </view>
   </t-popup>
 

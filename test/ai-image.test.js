@@ -12,6 +12,14 @@ const assert = require('node:assert/strict');
 
 const aiConfig = require('../packages/ai/config.js');
 const aiApi = require('../packages/ai/api.js');
+// F28:getAiConfig 返回值新增 prompts 字段(逐字段内置默认兜底),存量断言同步补齐
+const { DEFAULT_PROMPTS } = require('../packages/ai/prompts.js');
+const FULL_DEFAULT_CFG = {
+  aiEnabled: false,
+  imageEnabled: false,
+  textEnabled: false,
+  prompts: { ...DEFAULT_PROMPTS },
+};
 
 /* ---------------- mock 工具 ---------------- */
 
@@ -82,14 +90,14 @@ function freshEnv(opts) {
 test('getAiConfig:键不存在 → 全 false,且不抛错', async () => {
   const counters = freshEnv({ aiConfigDoc: undefined });
   const cfg = await aiConfig.getAiConfig();
-  assert.deepEqual(cfg, { aiEnabled: false, imageEnabled: false, textEnabled: false });
+  assert.deepEqual(cfg, FULL_DEFAULT_CFG);
   assert.equal(counters.appMetaGet, 1);
 });
 
 test('getAiConfig:正常键 → 透传显式 true,缺失字段按关', async () => {
   freshEnv({ aiConfigDoc: { _id: 'ai_config', aiEnabled: true, imageEnabled: true, expireAt: '2027-02-24' } });
   const cfg = await aiConfig.getAiConfig();
-  assert.deepEqual(cfg, { aiEnabled: true, imageEnabled: true, textEnabled: false });
+  assert.deepEqual(cfg, { aiEnabled: true, imageEnabled: true, textEnabled: false, prompts: { ...DEFAULT_PROMPTS } });
 });
 
 test('getAiConfig:60s 内二次读命中缓存,不重复发查询', async () => {
@@ -103,7 +111,7 @@ test('getAiConfig:60s 内二次读命中缓存,不重复发查询', async () => 
 test('getAiConfig:字段为 false / 非布尔 → 一律关(读取侧只有显式 true 才开)', async () => {
   freshEnv({ aiConfigDoc: { aiEnabled: 'yes', imageEnabled: false, textEnabled: 1 } });
   const cfg = await aiConfig.getAiConfig();
-  assert.deepEqual(cfg, { aiEnabled: false, imageEnabled: false, textEnabled: false });
+  assert.deepEqual(cfg, FULL_DEFAULT_CFG);
 });
 
 /* ---------------- setAiConfig ---------------- */
@@ -118,7 +126,7 @@ test('setAiConfig:已有文档走 update,写后缓存被清(下次读发新查�
   // 写后 get 应重新发查询(appMetaGet: 预热1 + setAiConfig 内部查1 + 写后 get 1 = 3)
   const cfg = await aiConfig.getAiConfig();
   assert.equal(counters.appMetaGet, 3);
-  assert.deepEqual(cfg, { aiEnabled: true, imageEnabled: true, textEnabled: false });
+  assert.deepEqual(cfg, { aiEnabled: true, imageEnabled: true, textEnabled: false, prompts: { ...DEFAULT_PROMPTS } });
 });
 
 test('setAiConfig:键不存在走 add 创建;全关时 aiEnabled 派生为 false', async () => {

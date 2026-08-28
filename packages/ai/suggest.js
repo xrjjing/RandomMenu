@@ -13,11 +13,7 @@ import { fetchAllDishes, statsAggregate, upcomingRecords, dateKey } from '../../
 import { getAiConfig } from './config.js';
 import { generateText, extractJson } from './text.js';
 
-/** system 角色固定约束:只能从候选列表选,输出严格 JSON;强调多样性避免大列表头部偏置 */
-const SYSTEM_PROMPT =
-  '你是定菜助手。从候选列表中推荐1道今晚的菜,只能从候选列表选,禁止编造。'
-  + '候选列表顺序无意义,不要总选同一个;追求多样性和新鲜感。'
-  + '输出严格 JSON:{"name":"菜名","reason":"20字内理由"}';
+// F28:system 提示词运行时从 config 取(cfg.prompts.suggest,空串/缺失由 normalizePrompts 兜底内置默认)
 
 /**
  * 候选池打散:随机洗牌后截取最多 60 个。
@@ -96,8 +92,9 @@ Page({
         候选列表: candidates,
         今明已定: Array.from(plannedNames),
       });
+      const cfg = await getAiConfig(); // 60s 内存缓存,重复读开销极低
       const text = await generateText([
-        { role: 'system', content: SYSTEM_PROMPT },
+        { role: 'system', content: cfg.prompts.suggest },
         { role: 'user', content: dataText },
       ]);
       const parsed = extractJson(text);

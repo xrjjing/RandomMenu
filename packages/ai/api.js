@@ -8,17 +8,19 @@
  * 注意:wx 引用一律放在函数内部,保证 node 环境 import 本文件不抛错。
  */
 
-/** 写实词根:保证生成的是真实菜品照片而非插画/卡通 */
-const REALISM_SUFFIX = ',写实美食摄影,真实菜品照片';
+import { getAiConfig } from './config.js';
+import { buildImagePrompt } from './prompts.js';
 
 /**
  * 生成菜品图片:调云函数 ai-image,失败(业务/网络)一律 throw,由调用方 toast。
+ * F28:写实词根改读 config.imageStyle(可编辑,内部 await getAiConfig 后拼接,签名不变)。
  * @param {string} prompt 生图提示词(云函数侧做非空/长度校验)
  * @param {object} [opts] 可选 { width, height },默认 768x768
  * @returns {Promise<string>} 云存储 fileID(cloud://)
  */
 export async function generateDishImage(prompt, opts = {}) {
-  const fullPrompt = prompt.includes('写实美食摄影') ? prompt : `${prompt}${REALISM_SUFFIX}`;
+  const cfg = await getAiConfig();
+  const fullPrompt = buildImagePrompt(prompt, cfg.prompts.imageStyle);
   const res = await wx.cloud.callFunction({
     name: 'ai-image',
     data: { prompt: fullPrompt, width: opts.width || 768, height: opts.height || 768 },
