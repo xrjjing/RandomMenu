@@ -5,6 +5,10 @@
       {
         "type": "folder",
         "value": "images-upload"
+      },
+      {
+        "type": "folder",
+        "value": "docs"
       }
     ],
     "include": []

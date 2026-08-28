@@ -109,3 +109,6 @@ miniprogram_npm
 .idea
 
 project.private.config.json
+
+# 项目内部文档(本地留存,不入库)
+docs/
