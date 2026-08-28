@@ -1,6 +1,6 @@
 /**
  * test/ai-text.test.js
- * F27 生文封装验收(node --test):packages/ai/text.js。
+ * F27 生文封装验收(node --test):packages/dish/ai/text.js。
  * 覆盖:开关关 → AI_DISABLED / 正常生成取 choices[0].message.content /
  *      空内容 → MODEL_ERROR / 超时 → TIMEOUT / 云侧异常收口 /
  *      extractJson 容错(纯 JSON / ```json 包裹 / 前后缀 / 非法)。
@@ -9,8 +9,8 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 
-const aiConfig = require('../packages/ai/config.js');
-const text = require('../packages/ai/text.js');
+const aiConfig = require('../packages/dish/ai/config.js');
+const text = require('../packages/dish/ai/text.js');
 
 /**
  * 构造 wx 替身:app_meta 配置 + extend.AI.createModel。

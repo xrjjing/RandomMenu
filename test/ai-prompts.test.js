@@ -1,6 +1,6 @@
 /**
  * test/ai-prompts.test.js
- * F28 提示词管理验收(node --test):packages/ai/prompts.js + config.js + api.js。
+ * F28 提示词管理验收(node --test):packages/dish/ai/prompts.js + config.js + api.js。
  * 覆盖:默认兜底(缺失/空串/纯空白 → 内置默认)/ 保存后读取一致(含缓存失效)/
  *      只写开关不抹掉已有 prompts / imageStyle 拼接含去重。
  * 运行:node --test;mock 方式与 test/ai-image.test.js 同款(内存云库 + freshEnv 重置)。
@@ -8,9 +8,9 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 
-const prompts = require('../packages/ai/prompts.js');
-const aiConfig = require('../packages/ai/config.js');
-const aiApi = require('../packages/ai/api.js');
+const prompts = require('../packages/dish/ai/prompts.js');
+const aiConfig = require('../packages/dish/ai/config.js');
+const aiApi = require('../packages/dish/ai/api.js');
 
 /* ---------------- mock 工具(与 test/ai-image.test.js 同款思路) ---------------- */
 

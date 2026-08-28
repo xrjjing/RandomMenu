@@ -7,12 +7,12 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 
 // 直接从源文件读函数体执行(avoid 微信运行时依赖 wx):
-// packages/ai/suggest.js 依赖 db.js → wx,无法直接 import;
+// packages/dish/ai/suggest.js 依赖 db.js → wx,无法直接 import;
 // 用正则提取函数体在沙箱中求值,保持测试与实现一致。
 const fs = require('node:fs');
 const path = require('node:path');
 
-const src = fs.readFileSync(path.join(__dirname, '../packages/ai/suggest.js'), 'utf8');
+const src = fs.readFileSync(path.join(__dirname, '../packages/dish/ai/suggest.js'), 'utf8');
 const m = src.match(/export function shuffleCandidates\(names, max = 60\) \{[\s\S]*?\n\}/);
 assert.ok(m, '源文件中应能提取 shuffleCandidates');
 // eslint-disable-next-line no-new-func

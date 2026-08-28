@@ -1,6 +1,6 @@
 /**
  * test/ai-recipe.test.js
- * F28 AI 写做法验收(node --test):packages/ai/recipe.js + packages/dish/edit.js。
+ * F28 AI 写做法验收(node --test):packages/dish/ai/recipe.js + packages/dish/edit.js。
  * 覆盖:生成成功收口 {ok,text} / 接口失败收口 {ok,error}(不 throw)/ 开关关 / 空内容 /
  *      编辑页已有内容时确认弹窗路径(源码提取 applyRecipeDraft,confirm 才覆盖)。
  * 运行:node --test;recipe.js mock 与 test/ai-text.test.js 同款;edit.js 用 shuffle.test.js
@@ -11,9 +11,9 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const aiConfig = require('../packages/ai/config.js');
-const prompts = require('../packages/ai/prompts.js');
-const recipe = require('../packages/ai/recipe.js');
+const aiConfig = require('../packages/dish/ai/config.js');
+const prompts = require('../packages/dish/ai/prompts.js');
+const recipe = require('../packages/dish/ai/recipe.js');
 
 /**
  * 构造 wx 替身:ai_config 内存文档 + extend.AI.createModel。

@@ -1,6 +1,6 @@
 /**
  * test/ai-image.test.js
- * F26 AI 生图批次1验收(node --test):api/aiConfig.js + packages/ai/api.js。
+ * F26 AI 生图批次1验收(node --test):api/aiConfig.js + packages/dish/ai/api.js。
  * 覆盖:getAiConfig 键不存在→全 false / 正常键透传 / 60s 缓存命中不重复发查询 /
  *      setAiConfig 写后清缓存;setAiConfig update/set 两分支;
  *      generateDishImage 云函数 ok:false → throw / ok:true → 返回 fileID;
@@ -10,10 +10,10 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 
-const aiConfig = require('../packages/ai/config.js');
-const aiApi = require('../packages/ai/api.js');
+const aiConfig = require('../packages/dish/ai/config.js');
+const aiApi = require('../packages/dish/ai/api.js');
 // F28:getAiConfig 返回值新增 prompts 字段(逐字段内置默认兜底),存量断言同步补齐
-const { DEFAULT_PROMPTS } = require('../packages/ai/prompts.js');
+const { DEFAULT_PROMPTS } = require('../packages/dish/ai/prompts.js');
 const FULL_DEFAULT_CFG = {
   aiEnabled: false,
   imageEnabled: false,
