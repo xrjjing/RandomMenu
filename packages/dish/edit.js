@@ -467,12 +467,25 @@ Page({
     }
   },
 
-  /** 采用:写库(updated!==1 视为未写入)→ push 进 images 刷新九宫格 → 关弹层 */
+  /** 采用:编辑模式写库(updated!==1 视为未写入);新增模式只入本地待保存数组(随 doSave 一起提交)→ 刷新九宫格 → 关弹层 */
   async onAiAdopt() {
     const { id, aiPreviewFileId, aiPreviewUrl, images } = this.data;
     if (!aiPreviewFileId) return;
     if (images.length >= MAX_IMAGES) {
       this.setData({ aiError: `最多 ${MAX_IMAGES} 张图片` });
+      return;
+    }
+    if (!id) {
+      // 新增模式:菜品还不存在,图先入本地待保存列表,保存菜品时一并入库
+      this.setData({
+        images: images.concat(aiPreviewFileId),
+        displayImages: aiPreviewUrl ? this.data.displayImages.concat(aiPreviewUrl) : this.data.displayImages,
+        aiPopupVisible: false,
+        aiPreviewUrl: '',
+        aiPreviewFileId: '',
+        aiError: '',
+      });
+      this.onShowToast('#t-toast', '已添加，保存菜品后生效');
       return;
     }
     try {
