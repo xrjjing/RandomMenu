@@ -17,6 +17,7 @@
 import useToastBehavior from '../../behaviors/useToast.js';
 import { statsAggregate } from '../../api/db.js';
 import { computePeriod, buildBarData, buildPieData, buildIngredientRanking } from '../../utils/stats.js';
+import { ensureIdentity } from '../../api/identity.js';
 
 Page({
   behaviors: [useToastBehavior],
@@ -39,12 +40,16 @@ Page({
 
   onLoad() {
     this.firstShow = true; // 首次 onShow 不重复加载
+    this.identityReady = null; // 身份加载单例 Promise(避免并发重复拉取)
+    this.member = null; // 当前成员文档(null = 未注册/未就绪,统计先按未分配池查)
     this.load(false);
   },
 
   onShow() {
     // 非首次进入(tab 切回 / 从其他页返回)静默刷新,保证数据最新
     if (!this.firstShow) {
+      // 身份可能已变化(其他设备被 admin 改家庭/在首页完成注册):每次进入重新实查
+      this.identityReady = null;
       this.load(true);
     }
     this.firstShow = false;
@@ -91,6 +96,23 @@ Page({
 
   /* ---------------- 数据加载与组装 ---------------- */
 
+  /* ---------------- 身份(家庭多租户) ---------------- */
+
+  /** 加载身份:ensureIdentity 幂等单例;失败静默降级为未分配池,不打断统计展示 */
+  loadIdentity() {
+    if (!this.identityReady) {
+      this.identityReady = ensureIdentity()
+        .then(({ member }) => {
+          this.member = member;
+        })
+        .catch((err) => {
+          console.error('身份加载失败', err);
+          this.identityReady = null; // 清单例,下次调用重新发起
+        });
+    }
+    return this.identityReady;
+  },
+
   /**
    * 加载当前期统计:statsAggregate({from, to}) 一次聚合出 byDate/byDish/byIngredient,
    * 按粒度与图型组装 barData / pieData,并重建原料榜列表(组装逻辑见 utils/stats.js)。
@@ -105,8 +127,14 @@ Page({
     };
     if (!silent) patch.loading = true;
     this.setData(patch);
+    // 统计按当前成员所属家庭过滤;身份未就绪时先按未分配池('')查,不阻塞展示
+    await this.loadIdentity();
     try {
-      const stats = await statsAggregate({ from: period.from, to: period.to });
+      const stats = await statsAggregate({
+        from: period.from,
+        to: period.to,
+        familyId: this.member ? this.member.familyId : '',
+      });
       this.stats = stats; // 缓存,原料榜开关切换时复用
       const barData = buildBarData(this.data.granularity, stats, period);
       const pieData = buildPieData(stats.byDish);

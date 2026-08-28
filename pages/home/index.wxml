@@ -1,4 +1,21 @@
 <view class="page home-page">
+  <!-- 昵称引导弹层(未注册成员首次进入弹出;可关闭不强制,未注册照常走未分配池) -->
+  <t-popup visible="{{nicknamePopupVisible}}" placement="bottom" bind:visible-change="onNicknameVisibleChange">
+    <view slot="content" class="nickname-popup">
+      <view class="nickname-title">给自己起个昵称</view>
+      <view class="nickname-desc">家人可在「更多 › 家庭与成员管理」里看到你</view>
+      <t-input
+        type="nickname"
+        value="{{nicknameInput}}"
+        placeholder="给自己起个昵称"
+        maxlength="20"
+        bind:change="onNicknameInput"
+      />
+      <t-button block theme="primary" bind:tap="onNicknameConfirm">确定</t-button>
+      <view class="nickname-skip" bind:tap="onNicknameClose">暂不设置</view>
+    </view>
+  </t-popup>
+
   <!-- 今日已定卡:当天落账记录(菜名 + 时间),每行右侧「撤销」 -->
   <view class="card today-card">
     <view class="card-title">今日已定</view>

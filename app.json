@@ -10,6 +10,11 @@
       "root": "packages/dish",
       "name": "dish",
       "pages": ["detail", "edit"]
+    },
+    {
+      "root": "packages/family",
+      "name": "family",
+      "pages": ["index"]
     }
   ],
   "usingComponents": {

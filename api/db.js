@@ -596,9 +596,10 @@ export function dateKey(d = new Date()) {
  * 做菜落账:读取菜品快照后写一条 records(只增不改,菜品删除后历史记录仍可读)。
  * ingredientNames 取非调料原料名列表(快照,统计模块原料 +1 的来源)。
  * @param {string} dishId 菜品 _id
+ * @param {string} [familyId=''] 落账时快照的所属家庭;'' 表示未分配池(向后兼容默认值)
  * @returns {Promise<object>} 新增的记录文档(含 _id)
  */
-export async function addCookRecord(dishId) {
+export async function addCookRecord(dishId, familyId = '') {
   const db = wx.cloud.database();
   // 取菜品快照:菜品删除后记录仍靠冗余字段保底可读
   const dish = await getDish(dishId);
@@ -613,6 +614,7 @@ export async function addCookRecord(dishId) {
     date: dateKey(),
     dishId,
     dishName: dish.name,
+    familyId: familyId || '',
     ingredientNames,
     createdAt: db.serverDate(),
   };
@@ -627,23 +629,25 @@ export async function addCookRecord(dishId) {
  * 某天的做菜记录列表(倒序,新→旧)。records 维持直查——今日已定卡是最直观的
  * 一致性窗口,每次读取都拿云库最新(不走集合缓存)。
  * @param {string} [date] 日期键 YYYY-MM-DD,默认今天
+ * @param {string} [familyId=''] 家庭过滤;'' 是有效条件(未分配池),不可因 falsy 被忽略
  * @returns {Promise<Array>} 记录数组(createdAt 倒序)
  */
-export async function todayRecords(date = dateKey()) {
-  const list = await fetchAll('records', { date });
+export async function todayRecords(date = dateKey(), familyId = '') {
+  const list = await fetchAll('records', { date, familyId: familyId || '' });
   return list.slice().sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 }
 
 /**
  * 撤销当天最后一条记录:按 createdAt 倒序取第一条并删除。
  * @param {string} [date] 日期键 YYYY-MM-DD,默认今天
+ * @param {string} [familyId=''] 家庭过滤;'' 是有效条件(未分配池),不可因 falsy 被忽略
  * @returns {Promise<{removed: boolean, record?: object}>} removed=false 表示当天无记录
  */
-export async function undoLastTodayRecord(date = dateKey()) {
+export async function undoLastTodayRecord(date = dateKey(), familyId = '') {
   const db = wx.cloud.database();
   const res = await db
     .collection('records')
-    .where({ date })
+    .where({ date, familyId: familyId || '' })
     .orderBy('createdAt', 'desc')
     .limit(1)
     .get();
@@ -659,9 +663,10 @@ export async function undoLastTodayRecord(date = dateKey()) {
  * @param {object} [range]
  * @param {string} [range.from] 起始日期 YYYY-MM-DD(含)
  * @param {string} [range.to] 结束日期 YYYY-MM-DD(含)
+ * @param {string} [range.familyId=''] 家庭过滤;'' 是有效条件(未分配池),不可因 falsy 被忽略
  * @returns {Promise<{byDate: Array<{date,count}>, byDish: Array<{name,count}>, byIngredient: Array<{name,count}>}>}
  */
-export async function statsAggregate({ from, to } = {}) {
+export async function statsAggregate({ from, to, familyId = '' } = {}) {
   const db = wx.cloud.database();
   const _ = db.command;
   const where = {};
@@ -670,6 +675,8 @@ export async function statsAggregate({ from, to } = {}) {
     else if (from) where.date = _.gte(from);
     else where.date = _.lte(to);
   }
+  // familyId 与 date 条件共存;'' 表示未分配池,是有意义的过滤条件
+  if (familyId !== undefined && familyId !== null) where.familyId = familyId || '';
   const records = await fetchAll('records', where);
   const byDateMap = new Map();
   const byDishMap = new Map();

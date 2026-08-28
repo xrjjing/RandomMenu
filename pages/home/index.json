@@ -10,6 +10,7 @@
     "t-button": "tdesign-miniprogram/button/button",
     "t-dialog": "tdesign-miniprogram/dialog/dialog",
     "t-popup": "tdesign-miniprogram/popup/popup",
+    "t-input": "tdesign-miniprogram/input/input",
     "t-toast": "tdesign-miniprogram/toast/toast",
     "spin-wheel": "/components/spin-wheel/index"
   }

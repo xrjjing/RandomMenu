@@ -9,6 +9,7 @@ import useToastBehavior from '../../behaviors/useToast.js';
 import { importBuiltinData } from '../../api/seed.js';
 import { listDishes } from '../../api/db.js';
 import { isBuiltinImageMapComplete, loadBuiltinImageMap, uploadBuiltinImages } from '../../api/upload.js';
+import { ensureIdentity, isFamilyAdmin } from '../../api/identity.js';
 
 Page({
   behaviors: [useToastBehavior],
@@ -16,6 +17,28 @@ Page({
   data: {
     importing: false, // 导入中标志,防重复点击
     uploading: false, // 内置图上云中标志,防重复点击
+    isAdmin: false, // 是否家庭管理员(管理入口仅 admin 可见)
+  },
+
+  onShow() {
+    // 每次进入实查身份:isAdmin 可能被其他设备随时改动,不可缓存
+    this.loadIdentity();
+  },
+
+  /** 加载身份并刷新 admin 标记;失败静默(入口保持隐藏,不阻塞其他功能) */
+  async loadIdentity() {
+    try {
+      const { member } = await ensureIdentity();
+      this.member = member;
+      this.setData({ isAdmin: isFamilyAdmin(member) });
+    } catch (err) {
+      console.error('身份加载失败', err);
+    }
+  },
+
+  /** 跳转家庭与成员管理页(分包 packages/family) */
+  goFamily() {
+    wx.navigateTo({ url: '/packages/family/index' });
   },
 
   /** 跳转原料库管理页(分包 packages/ingredient) */

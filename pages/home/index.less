@@ -396,3 +396,29 @@
   font-size: 22rpx;
   color: #999;
 }
+
+/* 昵称引导弹层(底部弹出):标题 + 说明 + 昵称输入 + 确认按钮 */
+.nickname-popup {
+  padding: 40rpx 32rpx calc(32rpx + env(safe-area-inset-bottom));
+}
+
+.nickname-title {
+  font-size: 32rpx;
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 8rpx;
+}
+
+.nickname-desc {
+  font-size: 24rpx;
+  color: #999;
+  margin-bottom: 24rpx;
+}
+
+/* 「暂不设置」文字入口:可关闭不强制,未注册照常走未分配池 */
+.nickname-skip {
+  margin-top: 24rpx;
+  text-align: center;
+  font-size: 26rpx;
+  color: #999;
+}

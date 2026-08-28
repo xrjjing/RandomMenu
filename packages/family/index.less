@@ -1,0 +1,83 @@
+/* 家庭与成员管理页样式
+   设计基线:圆角卡片 .card、浅灰背景 #f5f6f7(见 app.less),风格对齐 more 页 */
+
+/* 区块卡片间距 */
+.section-card {
+  margin-bottom: 20rpx;
+}
+
+/* 区块标题 */
+.section-title {
+  font-size: 30rpx;
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 12rpx;
+}
+
+/* 我的信息卡 */
+.me-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.me-name {
+  font-size: 34rpx;
+  font-weight: 600;
+  color: #333;
+}
+
+.me-family {
+  margin-top: 8rpx;
+  font-size: 26rpx;
+  color: #999;
+}
+
+/* 未分配池说明与条数 */
+.pool-desc {
+  font-size: 24rpx;
+  color: #999;
+}
+
+.pool-count {
+  margin-top: 8rpx;
+  margin-bottom: 20rpx;
+  font-size: 26rpx;
+  color: #333;
+}
+
+.pool-actions {
+  display: flex;
+  gap: 20rpx;
+}
+
+/* 对话框内嵌输入框容器(t-dialog content 插槽) */
+.dialog-input-wrap {
+  padding: 8rpx 32rpx 16rpx;
+}
+
+/* 底部选择弹层(成员归属 / 划归家庭) */
+.option-popup {
+  padding: 40rpx 32rpx calc(32rpx + env(safe-area-inset-bottom));
+}
+
+.option-popup-title {
+  font-size: 30rpx;
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 24rpx;
+  text-align: center;
+}
+
+.option-item {
+  padding: 24rpx 16rpx;
+  font-size: 28rpx;
+  color: #333;
+  text-align: center;
+  border-radius: 16rpx;
+}
+
+.option-item-active {
+  color: #ff8c42;
+  background: #fff1e6;
+}

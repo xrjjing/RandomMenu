@@ -23,6 +23,15 @@
         hover="{{true}}"
         bind:click="goUploadBuiltinImages"
       />
+      <!-- 管理入口仅家庭管理员可见可用 -->
+      <t-cell
+        wx:if="{{isAdmin}}"
+        title="家庭与成员管理"
+        note="家庭别名 · 成员归属 · 未分配池"
+        arrow="{{true}}"
+        hover="{{true}}"
+        bind:click="goFamily"
+      />
     </t-cell-group>
   </view>
   <t-toast id="t-toast" />

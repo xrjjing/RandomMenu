@@ -35,6 +35,7 @@ import {
   DISH_CARD_FIELDS,
 } from '../../api/db.js';
 import { SEASONING_SET } from '../../utils/seasonings.js';
+import { ensureIdentity, registerMember } from '../../api/identity.js';
 import { normalizeName } from '../../utils/normalize.js';
 import { orderDishImages } from '../../utils/image.js';
 import { resolveImgUrls } from '../../utils/imgUrl.js';
@@ -110,6 +111,8 @@ Page({
     wheelResultText: '', // 结果弹层正文(今晚就吃:菜名)
     wheelResultItem: null, // 转盘结果菜品 {id, name}
     candidates: [], // 转盘候选(当前匹配结果 / 全部菜品)
+    nicknamePopupVisible: false, // 昵称引导弹层(未注册成员首次进入时弹出)
+    nicknameInput: '', // 昵称输入值
   },
 
   onLoad() {
@@ -118,6 +121,9 @@ Page({
     this.requestSeq = 0; // 请求序号:快速切换条件时丢弃过期响应
     this.dishesSnapshot = null; // 菜品全量内存快照(匹配用,onShow 按需拉取)
     this.dishesSnapshotDirty = true; // 快照脏标记:onHide 置 true,onShow 重拉
+    this.identityReady = null; // 身份加载单例 Promise(避免并发重复拉取)
+    this.nicknamePrompted = false; // 昵称弹层本次会话只弹一次(可关不强制,下次冷启动再弹)
+    this.member = null; // 当前成员文档(null = 未注册/未就绪,数据走未分配池)
     this.init();
   },
 
@@ -152,6 +158,8 @@ Page({
     const seq = this.nextSeq();
     // 引导态 refreshMatch 不查询,首屏骨架由原料 chips 与今日记录加载完成后统一关闭
     this.refreshMatch(seq, false);
+    // 身份加载与数据加载并行:身份未就绪时今日卡先按未分配池('')查,不阻塞 UI
+    this.loadIdentity();
     await Promise.all([this.loadIngredients(''), this.refreshToday(false)]);
     if (seq === this.requestSeq) this.setData({ loading: false });
   },
@@ -187,12 +195,72 @@ Page({
     wx.stopPullDownRefresh();
   },
 
+  /* ---------------- 身份(家庭多租户) ---------------- */
+
+  /** 加载身份:ensureIdentity 幂等单例;失败 toast 允许重试(下次调用重新发起) */
+  async loadIdentity() {
+    if (!this.identityReady) {
+      this.identityReady = ensureIdentity()
+        .then(({ member }) => {
+          // 只存页面需要的 member,不 setData 大对象
+          this.member = member;
+          // 未注册且本次会话未弹过:弹出昵称引导(可关闭不强制,未注册照常走未分配池)
+          if (member === null && !this.nicknamePrompted) {
+            this.nicknamePrompted = true;
+            this.setData({ nicknamePopupVisible: true, nicknameInput: '' });
+          }
+        })
+        .catch((err) => {
+          console.error('身份加载失败', err);
+          this.identityReady = null; // 清单例,下次调用重新发起
+          this.onShowToast('#t-toast', '身份加载失败，部分功能不可用');
+        });
+    }
+    return this.identityReady;
+  },
+
+  /** 昵称输入 */
+  onNicknameInput(e) {
+    this.setData({ nicknameInput: e.detail.value || '' });
+  },
+
+  /** 昵称弹层遮罩/下拉关闭:与「暂不设置」等价,仅收起不强制(受控组件需回写 visible) */
+  onNicknameVisibleChange(e) {
+    const detail = e.detail || {};
+    const visible = typeof detail === 'boolean' ? detail : detail.visible;
+    if (visible === false) this.setData({ nicknamePopupVisible: false });
+  },
+
+  /** 昵称弹层关闭(不强制注册,member 仍 null 走未分配池;下次冷启动再弹) */
+  onNicknameClose() {
+    this.setData({ nicknamePopupVisible: false });
+  },
+
+  /** 确认昵称注册:成功后更新本地 member,后续落账/查询即走所属家庭 */
+  async onNicknameConfirm() {
+    const name = (this.data.nicknameInput || '').trim();
+    if (!name) {
+      this.onShowToast('#t-toast', '昵称不能为空');
+      return;
+    }
+    try {
+      this.member = await registerMember(name);
+      this.setData({ nicknamePopupVisible: false });
+      this.onShowToast('#t-toast', '欢迎');
+      // 注册前可能已按未分配池查过今日卡,落账归属变了,刷新一次
+      this.refreshToday(true);
+    } catch (err) {
+      console.error('注册成员失败', err);
+      this.onShowToast('#t-toast', err.message || '注册失败，请重试');
+    }
+  },
+
   /* ---------------- 今日已定 ---------------- */
 
   /** 拉取今日记录并组装展示行(菜名 + 本地 HH:mm);silent=true 时失败不打扰用户 */
   async refreshToday(silent) {
     try {
-      const records = await todayRecords(dateKey());
+      const records = await todayRecords(dateKey(), this.member ? this.member.familyId : '');
       const today = records.map((record) => ({
         _id: record._id,
         dishName: record.dishName || '未知菜品',
@@ -223,7 +291,7 @@ Page({
   async onUndoConfirm() {
     this.setData({ undoDialogVisible: false });
     try {
-      const res = await undoLastTodayRecord(dateKey());
+      const res = await undoLastTodayRecord(dateKey(), this.member ? this.member.familyId : '');
       this.onShowToast('#t-toast', res.removed ? '已撤销' : '今天还没有记录');
       this.refreshToday(true);
     } catch (err) {
@@ -495,7 +563,7 @@ Page({
     const { pendingDishId } = this.data;
     this.setData({ dishDialogVisible: false });
     try {
-      await addCookRecord(pendingDishId);
+      await addCookRecord(pendingDishId, this.member ? this.member.familyId : '');
       this.onShowToast('#t-toast', '已记录');
       this.refreshToday(true);
     } catch (err) {
@@ -631,7 +699,7 @@ Page({
     this.setData({ wheelResultVisible: false });
     if (!item) return;
     try {
-      await addCookRecord(item.id);
+      await addCookRecord(item.id, this.member ? this.member.familyId : '');
       this.onShowToast('#t-toast', '已记录');
       this.refreshToday(true);
     } catch (err) {

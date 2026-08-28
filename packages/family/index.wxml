@@ -1,0 +1,149 @@
+<view class="page family-page">
+  <!-- 我的信息卡 -->
+  <view class="card me-card" wx:if="{{me}}">
+    <view class="me-row">
+      <view class="me-name">{{me.nickname}}</view>
+      <t-tag wx:if="{{me.isAdmin}}" theme="warning" variant="light">管理员</t-tag>
+    </view>
+    <view class="me-family">所属家庭：{{myFamilyName || '未分配'}}</view>
+  </view>
+
+  <!-- 家庭管理区(仅 admin 可进本页,区内不再重复判定) -->
+  <view class="card section-card">
+    <view class="section-title">家庭</view>
+    <t-cell-group>
+      <t-cell
+        wx:for="{{families}}"
+        wx:key="_id"
+        title="{{item.name}}"
+        arrow="{{true}}"
+        hover="{{true}}"
+        bind:click="onFamilyTap"
+        data-id="{{item._id}}"
+        data-name="{{item.name}}"
+      />
+      <t-cell
+        title="+ 新建家庭"
+        hover="{{true}}"
+        bind:click="onCreateFamilyTap"
+      />
+    </t-cell-group>
+  </view>
+
+  <!-- 成员管理区:花名册,点击调整归属 -->
+  <view class="card section-card">
+    <view class="section-title">花名册</view>
+    <t-cell-group>
+      <t-cell
+        wx:for="{{members}}"
+        wx:key="_id"
+        title="{{item.nickname}}"
+        note="{{item.familyName || '未分配'}}"
+        arrow="{{true}}"
+        hover="{{true}}"
+        bind:click="onMemberTap"
+        data-id="{{item._id}}"
+      />
+    </t-cell-group>
+  </view>
+
+  <!-- 未分配池区:明细逐条展示,点单条可单独划归;底部整池操作 -->
+  <view class="card section-card">
+    <view class="section-title">未分配池</view>
+    <view class="pool-desc">历史记录与未分配成员的数据都在这里</view>
+    <view class="pool-count">当前 {{poolCount}} 条</view>
+    <t-cell-group wx:if="{{poolRecords.length > 0}}">
+      <t-cell
+        wx:for="{{poolRecords}}"
+        wx:key="_id"
+        title="{{item.dishName || '未知菜品'}}"
+        note="{{item.date}}"
+        arrow="{{true}}"
+        hover="{{true}}"
+        bind:click="onPoolRecordTap"
+        data-id="{{item._id}}"
+      />
+      <t-cell
+        wx:if="{{poolHasMore}}"
+        title="加载更多"
+        hover="{{true}}"
+        bind:click="onPoolMore"
+      />
+    </t-cell-group>
+    <view wx:else class="pool-desc">池子是空的,点击下方「归池历史记录」导入存量数据</view>
+    <view class="pool-actions">
+      <t-button theme="default" size="small" bind:tap="onMigrateTap">归池历史记录</t-button>
+      <t-button theme="primary" size="small" bind:tap="onAssignTap">整池划归</t-button>
+    </view>
+    <view class="pool-desc">点击某条记录可单独划归;「整池划归」把剩余全部一次划入</view>
+  </view>
+
+  <!-- 家庭名对话框(新建/重命名共用):t-dialog content 插槽内嵌 t-input -->
+  <t-dialog
+    visible="{{nameDialogVisible}}"
+    title="{{nameDialogTitle}}"
+    confirm-btn="确定"
+    cancel-btn="取消"
+    bind:confirm="onNameDialogConfirm"
+    bind:cancel="onNameDialogClose"
+    bind:close="onNameDialogClose"
+  >
+    <view slot="content" class="dialog-input-wrap">
+      <t-input
+        value="{{nameInput}}"
+        placeholder="请输入家庭名"
+        maxlength="20"
+        bind:change="onNameInput"
+      />
+    </view>
+  </t-dialog>
+
+  <!-- 成员归属选择弹层(底部):未分配 + 全部家庭 -->
+  <t-popup visible="{{memberPopupVisible}}" placement="bottom" bind:visible-change="onMemberPopupVisibleChange">
+    <view slot="content" class="option-popup">
+      <view class="option-popup-title">调整「{{activeMember.nickname}}」的归属</view>
+      <view
+        class="option-item {{activeMember.familyId === '' ? 'option-item-active' : ''}}"
+        data-family-id=""
+        bind:tap="onFamilyOptionTap"
+      >未分配</view>
+      <view
+        class="option-item {{activeMember.familyId === item._id ? 'option-item-active' : ''}}"
+        wx:for="{{families}}"
+        wx:key="_id"
+        data-family-id="{{item._id}}"
+        bind:tap="onFamilyOptionTap"
+      >{{item.name}}</view>
+    </view>
+  </t-popup>
+
+  <!-- 划归选择弹层(底部):整池/单条共用,选择目标家庭后二次确认 -->
+  <t-popup visible="{{assignPopupVisible}}" placement="bottom" bind:visible-change="onAssignPopupVisibleChange">
+    <view slot="content" class="option-popup">
+      <view class="option-popup-title">划归到哪个家庭？</view>
+      <view
+        class="option-item"
+        wx:for="{{families}}"
+        wx:key="_id"
+        data-id="{{item._id}}"
+        data-name="{{item.name}}"
+        bind:tap="onAssignFamilyTap"
+      >{{item.name}}</view>
+    </view>
+  </t-popup>
+
+  <!-- 划归确认对话框:整池写条数,单条写菜名;均写清不可撤销 -->
+  <t-dialog
+    visible="{{assignDialogVisible}}"
+    title="确认划归"
+    content="{{assignMode === 'record' ? '把选中的这条记录' : '把池内剩余 ' + poolCount + ' 条记录'}}划归「{{assignFamilyName}}」，不可撤销。确定吗？"
+    confirm-btn="确定"
+    cancel-btn="取消"
+    bind:confirm="onAssignConfirm"
+    bind:cancel="onAssignCancel"
+    bind:close="onAssignCancel"
+  />
+
+  <!-- 统一轻提示 -->
+  <t-toast id="t-toast" />
+</view>
