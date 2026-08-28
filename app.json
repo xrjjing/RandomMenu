@@ -17,9 +17,6 @@
       "pages": ["index"]
     }
   ],
-  "usingComponents": {
-    "t-toast": "tdesign-miniprogram/toast/toast"
-  },
   "window": {
     "backgroundTextStyle": "light",
     "navigationBarBackgroundColor": "#fff",
