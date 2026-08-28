@@ -45,11 +45,27 @@ function savePersisted() {
   }
 }
 
-/** 取缓存:过期条目视为未命中并顺手清理 */
+/** 提前过期边距(毫秒):到期前 20 分钟即视为失效,防边界抖动 */
+const EXPIRE_MARGIN_MS = 20 * 60 * 1000;
+
+/**
+ * 从腾讯 COS 临时链接提取签名过期时刻:t 参数为 Unix 秒(过期时刻,权威值)。
+ * 解析失败返回 0(调用方回退本地 exp 字段)。
+ */
+function extractExpireMs(url) {
+  const m = typeof url === 'string' ? url.match(/[?&]t=(\d{10})(?:&|$)/) : null;
+  return m ? Number(m[1]) * 1000 : 0;
+}
+
+/** 取缓存:以签名 t(权威)与本地 exp 双重判定,任一过期即重取 */
 function getCached(fileId, persisted) {
   const hit = memCache.get(fileId) || persisted[fileId];
   if (!hit) return null;
-  if (hit.exp <= Date.now()) {
+  const now = Date.now();
+  // 签名 t 是腾讯侧真实过期时刻,比本地时间戳可信(本地 exp 会因热重载/多端同步错乱)
+  const signedExp = extractExpireMs(hit.url);
+  const expired = signedExp ? signedExp - EXPIRE_MARGIN_MS <= now : hit.exp <= now;
+  if (expired) {
     memCache.delete(fileId);
     return null;
   }
