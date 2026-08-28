@@ -168,6 +168,12 @@ Page({
   },
 
   onShow() {
+    // AI 推荐返回:suggest 页写的 aiPick 标记,读取后清除并提示(不强制自动落账)
+    const aiPick = wx.getStorageSync('aiPick');
+    if (aiPick) {
+      wx.removeStorageSync('aiPick');
+      this.onShowToast('#t-toast', `AI 推荐:${aiPick}`);
+    }
     // 快照脏时重拉(冷启动 / tab 切回 / 编辑页返回),保证匹配用最新菜品数据
     if (this.dishesSnapshotDirty) {
       this.refreshDishesSnapshot();
@@ -741,6 +747,11 @@ Page({
   onWheelBtnTap() {
     if (this.data.wheelDisabled) return;
     this.openWheel();
+  },
+
+  /** AI 推荐入口:跳转分包 packages/ai/suggest(主包零 import 分包,仅页面跳转) */
+  onAiRecommend() {
+    wx.navigateTo({ url: '/packages/ai/suggest' });
   },
 
   /**

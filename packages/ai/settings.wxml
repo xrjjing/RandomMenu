@@ -1,0 +1,57 @@
+<view class="page ai-settings-page">
+  <!-- AI 设置区:开关即时保存;textEnabled 时展示报菜员入口;imageEnabled 时展示补图入口 -->
+  <view class="card section-card">
+    <view class="section-title">开关</view>
+    <view class="ai-note">到期 2027-02-24；关闭后相关入口立即隐藏，不影响其他功能</view>
+    <view class="ai-switch-row">
+      <text class="ai-switch-label">AI 生图</text>
+      <t-switch value="{{aiImageEnabled}}" loading="{{aiImageSwitching}}" bind:change="onAiImageSwitch" />
+    </view>
+    <view class="ai-switch-row">
+      <text class="ai-switch-label">AI 生文</text>
+      <t-switch value="{{aiTextEnabled}}" loading="{{aiTextSwitching}}" bind:change="onAiTextSwitch" />
+    </view>
+    <t-cell-group wx:if="{{aiTextEnabled}}">
+      <t-cell title="AI 报菜员" note="统计页 AI 小结与推荐" arrow="{{true}}" hover="{{true}}" bind:click="onSummaryTap" />
+    </t-cell-group>
+    <t-cell-group wx:if="{{aiImageEnabled}}">
+      <t-cell title="AI 补图" note="仅为没有图片的菜生成" arrow="{{true}}" hover="{{true}}" bind:click="onRepairTap" />
+    </t-cell-group>
+  </view>
+
+  <!-- AI 补图弹层(底部):无图菜列表,逐个生成/采用,一次弹层会话最多 10 张 -->
+  <t-popup visible="{{repairPopupVisible}}" placement="bottom" bind:visible-change="onRepairPopupVisibleChange">
+    <view class="option-popup repair-popup">
+      <view class="option-popup-title">AI 补图（{{repairItems.length}} 个菜无图）</view>
+      <view class="ai-note">仅为没有图片的菜生成，生成结果与手动上传的图片相同，可随时删除；一次最多生成 10 张</view>
+      <scroll-view scroll-y class="repair-list">
+        <view wx:for="{{repairItems}}" wx:key="_id" class="repair-item">
+          <view class="repair-row">
+            <text class="repair-name">{{item.name}}</text>
+            <t-button
+              wx:if="{{!item.previewUrl}}"
+              size="small"
+              variant="outline"
+              loading="{{item.genLoading}}"
+              bind:tap="onRepairGenerate"
+              data-index="{{index}}"
+            >生成</t-button>
+          </view>
+          <view wx:if="{{item.error}}" class="ai-error">{{item.error}}</view>
+          <view wx:if="{{item.previewUrl}}" class="repair-preview-row">
+            <image class="repair-thumb" src="{{item.previewUrl}}" mode="aspectFill" />
+            <view class="repair-preview-ops">
+              <t-button size="small" theme="primary" loading="{{item.genLoading}}" bind:tap="onRepairAdopt" data-index="{{index}}">采用</t-button>
+              <t-button size="small" variant="outline" loading="{{item.genLoading}}" bind:tap="onRepairGenerate" data-index="{{index}}">重新生成</t-button>
+            </view>
+          </view>
+        </view>
+        <view wx:if="{{repairItems.length === 0}}" class="ai-note">所有菜都有图片了</view>
+      </scroll-view>
+      <t-button block variant="outline" bind:tap="onRepairClose">关闭</t-button>
+    </view>
+  </t-popup>
+
+  <!-- 统一轻提示 -->
+  <t-toast id="t-toast" />
+</view>

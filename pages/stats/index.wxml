@@ -9,7 +9,7 @@
     </t-tabs>
   </view>
 
-  <!-- 期切换:左右箭头 + 当前期文案(未来期右箭头禁用) -->
+  <!-- 期切换:左右箭头 + 当前期文案(未来期右箭头禁用);右侧 AI 小结入口(仅跳转,开关判定在分包页) -->
   <view class="period-row">
     <view
       class="period-arrow {{prevDisabled ? 'period-arrow-disabled' : ''}}"
@@ -20,6 +20,7 @@
       class="period-arrow {{nextDisabled ? 'period-arrow-disabled' : ''}}"
       bind:tap="onNext"
     >›</view>
+    <view class="ai-summary-entry" hover-class="ai-summary-entry-hover" bind:tap="onAiSummary">✨ AI 小结</view>
   </view>
 
   <!-- 日 / 月 / 年:图型切换(t-tag)+ 图表 -->

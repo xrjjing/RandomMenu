@@ -1,0 +1,29 @@
+<view class="page ai-suggest-page">
+  <!-- 开关未开:空态 -->
+  <view wx:if="{{!textEnabled}}" class="empty-wrap">
+    <view class="empty-emoji">🤖</view>
+    <view class="empty-text">AI 功能未开启</view>
+    <view class="empty-tip">管理员可在「更多 › AI 设置」中开启</view>
+  </view>
+
+  <!-- 已开启:推荐卡片 -->
+  <block wx:else>
+    <view class="card suggest-card">
+      <view class="suggest-title">今晚吃什么？</view>
+      <view wx:if="{{loading}}" class="suggest-loading">AI 正在挑菜…</view>
+      <view wx:elif="{{error}}" class="suggest-error">{{error}}</view>
+      <block wx:elif="{{pickName}}">
+        <view class="suggest-dish">{{pickName}}</view>
+        <view wx:if="{{pickReason}}" class="suggest-reason">{{pickReason}}</view>
+      </block>
+    </view>
+    <view class="suggest-actions">
+      <t-button wx:if="{{pickName}}" block variant="outline" loading="{{loading}}" bind:tap="onSuggest">换一个</t-button>
+      <t-button wx:if="{{pickName}}" block theme="primary" bind:tap="onAccept">就吃这个</t-button>
+      <t-button wx:if="{{!pickName}}" block theme="primary" loading="{{loading}}" bind:tap="onSuggest">开始推荐</t-button>
+    </view>
+  </block>
+
+  <!-- 统一轻提示 -->
+  <t-toast id="t-toast" />
+</view>

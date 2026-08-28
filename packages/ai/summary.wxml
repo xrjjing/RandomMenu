@@ -1,0 +1,26 @@
+<view class="page ai-summary-page">
+  <!-- 开关未开:空态 -->
+  <view wx:if="{{!textEnabled}}" class="empty-wrap">
+    <view class="empty-emoji">🤖</view>
+    <view class="empty-text">AI 功能未开启</view>
+    <view class="empty-tip">管理员可在「更多 › AI 设置」中开启</view>
+  </view>
+
+  <!-- 已开启:小结卡片 -->
+  <block wx:else>
+    <view class="card summary-card">
+      <view class="summary-title">近 7 天小结</view>
+      <view wx:if="{{loading}}" class="summary-loading">AI 正在总结…</view>
+      <view wx:elif="{{error}}" class="summary-error">{{error}}</view>
+      <view wx:elif="{{summaryText}}" class="summary-text">{{summaryText}}</view>
+    </view>
+    <view class="summary-actions">
+      <t-button theme="primary" size="medium" loading="{{loading}}" bind:tap="onRegenerate">
+        {{summaryText ? '重新总结' : '开始总结'}}
+      </t-button>
+    </view>
+  </block>
+
+  <!-- 统一轻提示 -->
+  <t-toast id="t-toast" />
+</view>

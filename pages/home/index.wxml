@@ -161,6 +161,9 @@
     <text wx:elif="{{!matchHasMore}}">没有更多了</text>
   </view>
 
+  <!-- AI 推荐入口按钮:fixed 悬浮于转盘按钮上方,同样不占文档流(仅跳转分包页) -->
+  <view class="ai-recommend-btn" bind:tap="onAiRecommend">✨ AI 推荐</view>
+
   <!-- 转盘入口按钮:fixed 悬浮于右下角(参照菜单页 ➕ 先例),不占文档流,
        列表再长也不会被顶到页面底端被自定义 tabBar 盖住;候选为空时禁用置灰并提示 -->
   <view class="wheel-btn {{wheelDisabled ? 'wheel-btn-disabled' : ''}}" bind:tap="onWheelBtnTap">🎰 {{wheelDisabled ? '先选几道菜或添加菜谱' : '随机转盘'}}</view>

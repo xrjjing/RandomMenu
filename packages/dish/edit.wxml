@@ -77,6 +77,7 @@
           />
           <view class="image-remove" data-index="{{index}}" catch:tap="onRemoveImage">✕</view>
         </view>
+        <view wx:if="{{aiImageEnabled}}" class="image-cell image-ai" bind:tap="onOpenAiPopup">✨</view>
         <view wx:if="{{images.length < MAX_IMAGES}}" class="image-cell image-add" bind:tap="onAddImage">＋</view>
       </view>
     </view>
@@ -204,6 +205,44 @@
       <view class="popup-footer">
         <t-button block theme="primary" bind:tap="onIngredientDone">完成（{{ingredients.length}}）</t-button>
       </view>
+    </view>
+  </t-popup>
+
+  <!-- AI 生图弹层:居中卡片(仅编辑模式且 imageEnabled 时入口可见) -->
+  <t-popup
+    visible="{{aiPopupVisible}}"
+    placement="center"
+    bind:visible-change="onAiPopupVisibleChange"
+  >
+    <view class="ai-popup">
+      <view class="ai-popup-title">AI 生成图片</view>
+      <t-textarea
+        value="{{aiPrompt}}"
+        placeholder="描述想要的图片"
+        maxlength="500"
+        autosize
+        bind:change="onAiPromptChange"
+      />
+      <view wx:if="{{aiPreviewUrl}}" class="ai-preview">
+        <image class="ai-preview-img" src="{{aiPreviewUrl}}" mode="aspectFit" />
+      </view>
+      <view wx:if="{{aiError}}" class="ai-error">{{aiError}}</view>
+      <view class="ai-popup-btns">
+        <t-button
+          variant="outline"
+          size="small"
+          loading="{{aiGenerating}}"
+          bind:tap="onAiGenerate"
+        >{{aiPreviewUrl ? '重新生成' : '生成'}}</t-button>
+        <t-button
+          wx:if="{{aiPreviewUrl}}"
+          theme="primary"
+          size="small"
+          bind:tap="onAiAdopt"
+        >采用</t-button>
+        <t-button variant="outline" size="small" bind:tap="onAiDiscard">放弃</t-button>
+      </view>
+      <view wx:if="{{aiGenerating}}" class="ai-tip">生成中，约 10-30 秒…</view>
     </view>
   </t-popup>
 

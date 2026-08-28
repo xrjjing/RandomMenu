@@ -1,0 +1,7 @@
+{
+  "navigationBarTitleText": "AI 小结",
+  "usingComponents": {
+    "t-button": "tdesign-miniprogram/button/button",
+    "t-toast": "tdesign-miniprogram/toast/toast"
+  }
+}

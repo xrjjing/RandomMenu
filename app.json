@@ -15,6 +15,11 @@
       "root": "packages/family",
       "name": "family",
       "pages": ["index"]
+    },
+    {
+      "root": "packages/ai",
+      "name": "ai",
+      "pages": ["settings", "summary", "suggest"]
     }
   ],
   "window": {

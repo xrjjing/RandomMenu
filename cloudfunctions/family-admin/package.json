@@ -1,0 +1,9 @@
+{
+  "name": "family-admin",
+  "version": "1.0.0",
+  "description": "家庭管理写操作(管理员身份校验 + 服务端代写)",
+  "main": "index.js",
+  "dependencies": {
+    "wx-server-sdk": "~2.6.3"
+  }
+}

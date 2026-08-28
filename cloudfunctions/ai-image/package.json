@@ -1,0 +1,9 @@
+{
+  "name": "ai-image",
+  "version": "1.0.0",
+  "description": "F26 AI 生图云函数:调混元生图模型并把临时 url 转存云存储",
+  "main": "index.js",
+  "dependencies": {
+    "wx-server-sdk": "^4.0.2"
+  }
+}

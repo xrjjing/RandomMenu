@@ -417,6 +417,25 @@
 }
 
 /* ---------- 转盘入口按钮:fixed 悬浮右下角(参照菜单页 ➕ 先例),避开自定义 tabBar ---------- */
+.ai-recommend-btn {
+  position: fixed;
+  right: 32rpx;
+  bottom: calc(304rpx + env(safe-area-inset-bottom));
+  z-index: 50;
+  padding: 0 36rpx;
+  height: 72rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 36rpx;
+  font-size: 26rpx;
+  font-weight: 500;
+  background: #fff;
+  color: #ff8c42;
+  border: 1rpx solid #ff8c42;
+  box-shadow: 0 4rpx 16rpx rgba(255, 140, 66, 0.15);
+}
+
 .wheel-btn {
   position: fixed;
   right: 32rpx;

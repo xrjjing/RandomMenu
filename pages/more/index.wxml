@@ -32,6 +32,15 @@
         hover="{{true}}"
         bind:click="goFamily"
       />
+      <!-- AI 设置入口仅家庭管理员可见 -->
+      <t-cell
+        wx:if="{{isAdmin}}"
+        title="AI 设置"
+        note="生图 · 生文开关"
+        arrow="{{true}}"
+        hover="{{true}}"
+        bind:click="onAiSettings"
+      />
     </t-cell-group>
   </view>
   <t-toast id="t-toast" />

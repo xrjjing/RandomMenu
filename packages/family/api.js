@@ -63,13 +63,21 @@ export async function listMembers() {
 
 /**
  * 设置成员所属家庭(familyId 传 '' 表示移回未分配池)。
+ * 走 family-admin 云函数:members 他人记录的小程序端 doc().update 会被安全规则静默拒绝
+ * (updated:0 不抛错,界面上看似成功实则未写入),服务端校验 isAdmin 后代写才可靠。
  * @param {string} memberDocId members 文档 _id
  * @param {string} familyId 家庭 _id,或 '' 表示未分配
- * @returns {Promise<void>}
+ * @throws {Error} 云函数返回 ok:false(非管理员/家庭不存在/未变动)时抛错
  */
 export async function setMemberFamily(memberDocId, familyId) {
-  const db = wx.cloud.database();
-  await db.collection('members').doc(memberDocId).update({ data: { familyId: familyId || '' } });
+  const res = await wx.cloud.callFunction({
+    name: 'family-admin',
+    data: { action: 'updateMemberFamily', memberDocId, familyId: familyId || '' },
+  });
+  const result = res.result || {};
+  if (result.ok !== true) {
+    throw new Error(result.error || '归属调整失败');
+  }
 }
 
 /**

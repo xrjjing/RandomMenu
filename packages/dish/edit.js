@@ -17,6 +17,8 @@ import { normalizeName } from '../../utils/normalize.js';
 import { SEASONING_SET } from '../../utils/seasonings.js';
 import { isCloudFileId } from '../../utils/image.js';
 import { resolveImgUrls } from '../../utils/imgUrl.js';
+import { getAiConfig } from '../ai/config.js';
+import { generateDishImage, attachImageToDish } from '../ai/api.js';
 
 /** 每菜图片上限 */
 const MAX_IMAGES = 5;
@@ -62,6 +64,13 @@ Page({
     quickAddIsSeasoning: false, // 即时新增默认调料标记(搜索词变化时按调料表重算,用户可手动改)
     ingredientCandidates: [], // 原料搜索结果(带 checked 标记)
     duplicateVisible: false, // 重名确认弹窗
+    aiImageEnabled: false, // AI 生图入口开关(仅编辑模式拉取,新建无落点恒 false)
+    aiPopupVisible: false, // AI 生图弹层
+    aiPrompt: '', // 生图提示词
+    aiGenerating: false, // 生成中(防重复点击)
+    aiPreviewUrl: '', // 生成图预览临时链接(fileID 换链后)
+    aiPreviewFileId: '', // 生成图 cloud:// fileID(采用时写入 dishes.images)
+    aiError: '', // 生成/采用失败文案(卡片内红字)
   },
 
   onLoad(options) {
@@ -76,6 +85,10 @@ Page({
     if (id) {
       wx.setNavigationBarTitle({ title: '编辑菜品' });
       this.loadDish(id);
+      // AI 生图入口开关(失败按 false,不弹错误)
+      getAiConfig()
+        .then((cfg) => this.setData({ aiImageEnabled: cfg.imageEnabled }))
+        .catch(() => {});
     } else {
       wx.setNavigationBarTitle({ title: '新增菜品' });
       this.setData({ loading: false });
@@ -398,6 +411,80 @@ Page({
   /** 添加步骤 */
   onAddStep() {
     this.setData({ steps: this.data.steps.concat([{ id: this.stepSeq++, text: '' }]) });
+  },
+
+  /* ---------------- AI 生图 ---------------- */
+
+  /** 打开 AI 生图弹层:预填菜名 + 固定风格后缀,用户可改 */
+  onOpenAiPopup() {
+    this.setData({
+      aiPopupVisible: true,
+      aiError: '',
+      aiPrompt: `${this.data.name}美食摄影,俯拍,自然光,真实风格`,
+    });
+  },
+
+  /** AI 弹层遮罩关闭 */
+  onAiPopupVisibleChange(e) {
+    if (!e.detail.visible) this.setData({ aiPopupVisible: false });
+  },
+
+  /** 生图提示词输入 */
+  onAiPromptChange(e) {
+    this.setData({ aiPrompt: e.detail.value });
+  },
+
+  /** 生成/重新生成:loading 防重复,成功后换链展示预览,失败卡片内红字 */
+  async onAiGenerate() {
+    if (this.data.aiGenerating) return;
+    const prompt = (this.data.aiPrompt || '').trim();
+    if (!prompt) {
+      this.setData({ aiError: '请先填写图片描述' });
+      return;
+    }
+    this.setData({ aiGenerating: true, aiError: '' });
+    try {
+      const fileID = await generateDishImage(prompt);
+      const urls = await resolveImgUrls([fileID]);
+      this.setData({ aiPreviewFileId: fileID, aiPreviewUrl: urls[0] || '', aiGenerating: false });
+    } catch (err) {
+      console.error('AI 生图失败', err);
+      this.setData({ aiGenerating: false, aiError: err.message || '生图失败，请重试' });
+    }
+  },
+
+  /** 采用:写库(updated!==1 视为未写入)→ push 进 images 刷新九宫格 → 关弹层 */
+  async onAiAdopt() {
+    const { id, aiPreviewFileId, aiPreviewUrl, images } = this.data;
+    if (!aiPreviewFileId) return;
+    if (images.length >= MAX_IMAGES) {
+      this.setData({ aiError: `最多 ${MAX_IMAGES} 张图片` });
+      return;
+    }
+    try {
+      const updated = await attachImageToDish(id, aiPreviewFileId);
+      if (updated !== 1) {
+        this.setData({ aiError: '保存失败，请重试' });
+        return;
+      }
+      this.setData({
+        images: images.concat(aiPreviewFileId),
+        displayImages: aiPreviewUrl ? this.data.displayImages.concat(aiPreviewUrl) : this.data.displayImages,
+        aiPopupVisible: false,
+        aiPreviewUrl: '',
+        aiPreviewFileId: '',
+        aiError: '',
+      });
+      this.onShowToast('#t-toast', '已添加');
+    } catch (err) {
+      console.error('AI 图保存失败', err);
+      this.setData({ aiError: '保存失败，请重试' });
+    }
+  },
+
+  /** 放弃:关弹层并清预览(仅页面态,不删云存储文件,由用户在图库自行清理) */
+  onAiDiscard() {
+    this.setData({ aiPopupVisible: false, aiPreviewUrl: '', aiPreviewFileId: '', aiError: '' });
   },
 
   /* ---------------- 保存 ---------------- */
