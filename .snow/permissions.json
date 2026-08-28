@@ -1,8 +1,0 @@
-{
-  "alwaysApprovedTools": [
-    "filesystem-read",
-    "websearch-search",
-    "filesystem-create",
-    "notebook-manage"
-  ]
-}
