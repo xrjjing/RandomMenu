@@ -69,6 +69,104 @@
   color: #ff8c42;
 }
 
+/* F25 分组标题(今天 M/D / 明天 M/D / 后天 M/D):小号灰字,与行区分 */
+.today-group-title {
+  padding: 12rpx 0 4rpx;
+  font-size: 24rpx;
+  color: #999;
+}
+
+/* 行内右侧按钮排:原料 + 撤销(撤销仅今天组) */
+.today-actions {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+/* F25 「原料」文字按钮:与撤销同风格,用中性灰区分于危险/主色操作 */
+.today-ing-btn {
+  padding: 8rpx 16rpx;
+  font-size: 26rpx;
+  color: #999;
+}
+
+/* 行点击态(跳详情) */
+.today-row-hover {
+  opacity: 0.7;
+}
+
+/* ---------- F25 落账确认弹层(底部 popup):标题 + 菜名 + 三选日期 + 按钮 ---------- */
+.confirm-popup {
+  padding: 40rpx 32rpx calc(32rpx + env(safe-area-inset-bottom));
+}
+
+.confirm-title {
+  font-size: 32rpx;
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 8rpx;
+  text-align: center;
+}
+
+.confirm-dish {
+  font-size: 28rpx;
+  color: #666;
+  margin-bottom: 24rpx;
+  text-align: center;
+}
+
+/* 三选日期按钮行:横排三个,选中暖橙主色,未选中灰底 */
+.date-option-row {
+  display: flex;
+  gap: 16rpx;
+  margin-bottom: 32rpx;
+}
+
+.date-option {
+  flex: 1;
+  text-align: center;
+  padding: 16rpx 0;
+  border-radius: 12rpx;
+  font-size: 28rpx;
+  color: #666;
+  background: #f5f6f7;
+}
+
+.date-option-active {
+  color: #fff;
+  background: #ff8c42;
+  font-weight: 600;
+}
+
+/* 取消 / 确认按钮排 */
+.confirm-btn-row {
+  display: flex;
+  gap: 24rpx;
+}
+
+/* 原料弹层内容:F25 逐行展示原料名 */
+.ingredients-list {
+  margin-bottom: 32rpx;
+}
+
+.ingredients-item {
+  padding: 12rpx 0;
+  font-size: 28rpx;
+  color: #333;
+  border-bottom: 2rpx solid #f5f6f7;
+}
+
+.ingredients-item:last-child {
+  border-bottom: none;
+}
+
+.ingredients-empty {
+  margin-bottom: 32rpx;
+  text-align: center;
+  font-size: 26rpx;
+  color: #999;
+}
+
 /* ---------- 冰箱里有什么 ---------- */
 .fridge-card {
   margin-bottom: 20rpx;

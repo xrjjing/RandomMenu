@@ -597,9 +597,19 @@ export function dateKey(d = new Date()) {
  * ingredientNames 取非调料原料名列表(快照,统计模块原料 +1 的来源)。
  * @param {string} dishId 菜品 _id
  * @param {string} [familyId=''] 落账时快照的所属家庭;'' 表示未分配池(向后兼容默认值)
+ * @param {string} [date=dateKey()] 落账日期 YYYY-MM-DD(F25 提前定菜:可选今天/明天/后天);
+ *   非法格式(不匹配 /^\d{4}-\d{2}-\d{2}$/ 或解析后与输出不一致,如 2026-13-99)静默回退今天,不 throw
  * @returns {Promise<object>} 新增的记录文档(含 _id)
  */
-export async function addCookRecord(dishId, familyId = '') {
+/** 内部:校验日期键合法性;非法回退 null,由调用方兜底今天 */
+function validDateKey(date) {
+  if (typeof date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
+  // 解析后重新格式化,与原值不一致(如 2026-13-99)视为非法
+  const d = new Date(`${date}T12:00:00`);
+  return dateKey(d) === date ? date : null;
+}
+
+export async function addCookRecord(dishId, familyId = '', date = dateKey()) {
   const db = wx.cloud.database();
   // 取菜品快照:菜品删除后记录仍靠冗余字段保底可读
   const dish = await getDish(dishId);
@@ -611,7 +621,8 @@ export async function addCookRecord(dishId, familyId = '') {
     ingredientNames = dish.ingredientNames;
   }
   const doc = {
-    date: dateKey(),
+    // F25 提前定菜:date 支持调用方指定今天/明天/后天,非法值兜底今天
+    date: validDateKey(date) || dateKey(),
     dishId,
     dishName: dish.name,
     familyId: familyId || '',
@@ -638,6 +649,48 @@ export async function todayRecords(date = dateKey(), familyId = '') {
 }
 
 /**
+ * 纯函数:按有序日期键数组分组记录,组内 createdAt 倒序(新→旧,与 todayRecords 一致)。
+ * 不在 dates 内的记录忽略;单独导出便于测试。
+ * @param {Array} records 记录数组(records 原始字段)
+ * @param {string[]} dates 有序日期键数组(如 [今天, 明天, 后天])
+ * @returns {Object<string, Array>} 与 dates 对齐的分组对象,空组为空数组
+ */
+export function groupByDate(records, dates) {
+  const groups = {};
+  dates.forEach((date) => {
+    groups[date] = [];
+  });
+  (records || []).forEach((record) => {
+    if (groups[record.date]) groups[record.date].push(record);
+  });
+  Object.values(groups).forEach((group) =>
+    group.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)),
+  );
+  return groups;
+}
+
+/**
+ * F25 提前定菜:首页今/明/后三分组数据源。
+ * 拉全量 records 后内存过滤三个日期(复用 fetchAll 分页);'' 与 todayRecords 同样是有效条件(未分配池)。
+ * @param {string} [familyId=''] 家庭过滤;'' 表示未分配池
+ * @returns {Promise<{today: Array, tomorrow: Array, dayafter: Array, total: number}>}
+ *   三组均按 createdAt 倒序,组内保留 records 原始字段;空组为空数组,调用方按「存在才显示分组」处理
+ */
+export async function upcomingRecords(familyId = '') {
+  const now = Date.now();
+  // 跨月/跨年由 Date 自然进位,禁止手动拼字符串加减
+  const dates = [0, 1, 2].map((n) => dateKey(new Date(now + n * 86400000)));
+  const list = await fetchAll('records', { familyId: familyId || '' });
+  const groups = groupByDate(list, dates);
+  return {
+    today: groups[dates[0]],
+    tomorrow: groups[dates[1]],
+    dayafter: groups[dates[2]],
+    total: groups[dates[0]].length + groups[dates[1]].length + groups[dates[2]].length,
+  };
+}
+
+/**
  * 撤销当天最后一条记录:按 createdAt 倒序取第一条并删除。
  * @param {string} [date] 日期键 YYYY-MM-DD,默认今天
  * @param {string} [familyId=''] 家庭过滤;'' 是有效条件(未分配池),不可因 falsy 被忽略
@@ -655,6 +708,24 @@ export async function undoLastTodayRecord(date = dateKey(), familyId = '') {
   const record = res.data[0];
   await db.collection('records').doc(record._id).remove();
   return { removed: true, record };
+}
+
+/**
+ * 删除单条落账记录(F25 明天/后天组的"删除"按钮)。
+ * 与撤销(组级:删当天最后一条)不同,这是行级删除:按 recordId 精确删。
+ * 家庭校验与撤销同语义:按落账时快照 familyId 匹配,不匹配视为不存在(防跨家庭误删)。
+ * @param {string} recordId 记录 _id
+ * @param {string} [familyId=''] 家庭过滤;'' 是有效条件(未分配池)
+ * @returns {Promise<{removed: boolean}>}
+ */
+export async function deleteRecord(recordId, familyId = '') {
+  const db = wx.cloud.database();
+  const res = await db.collection('records').doc(recordId).get();
+  if (!res.data || (res.data.familyId || '') !== (familyId || '')) {
+    return { removed: false };
+  }
+  await db.collection('records').doc(recordId).remove();
+  return { removed: true };
 }
 
 /**

@@ -16,20 +16,38 @@
     </view>
   </t-popup>
 
-  <!-- 今日已定卡:当天落账记录(菜名 + 时间),每行右侧「撤销」 -->
+  <!-- 今明已定卡:F25 三分组(今天/明天/后天),空组整组不渲染,全空显示空态;
+       行点击跳详情,每行「原料」弹层;撤销按钮只在今天组展示 -->
   <view class="card today-card">
-    <view class="card-title">今日已定</view>
-    <view wx:if="{{today.length === 0}}" class="today-empty">今天还没定，选一道吧 👇</view>
-    <view wx:else class="today-list">
-      <view class="today-row" wx:for="{{today}}" wx:key="_id">
-        <view class="today-info">
-          <text class="today-name">{{item.dishName}}</text>
-          <text class="today-time">{{item.time}}</text>
+    <view class="card-title">今明已定</view>
+    <view wx:if="{{todayTotal === 0}}" class="today-empty">今天还没定，选一道吧 👇</view>
+    <block wx:else>
+      <block wx:for="{{todayGroups}}" wx:for-item="group" wx:key="key">
+        <view wx:if="{{group.rows.length > 0}}" class="today-group">
+          <view class="today-group-title">{{group.label}}</view>
+          <view
+            class="today-row"
+            wx:for="{{group.rows}}"
+            wx:key="_id"
+            hover-class="today-row-hover"
+            bind:tap="onTodayRowTap"
+            data-id="{{item.dishId}}"
+          >
+            <view class="today-info">
+              <text class="today-name">{{item.dishName}}</text>
+              <text class="today-time">{{item.time}}</text>
+            </view>
+            <view class="today-actions">
+              <!-- 原料文字按钮:catch:tap 阻止冒泡,不触发行跳详情 -->
+              <view class="today-ing-btn" catch:tap="onIngredientsTap" data-gkey="{{group.key}}" data-index="{{index}}">原料</view>
+              <!-- 今天组:撤销(组级,删当天最后一条);明天/后天组:行级删除 -->
+              <view wx:if="{{group.key === 'today'}}" class="today-undo" catch:tap="onUndoTap">撤销</view>
+              <view wx:else class="today-undo" catch:tap="onDeleteTap" data-gkey="{{group.key}}" data-index="{{index}}">删除</view>
+            </view>
+          </view>
         </view>
-        <!-- 撤销文字按钮:点击确认后删除的是当天最后一条记录(见弹层文案) -->
-        <view class="today-undo" catch:tap="onUndoTap">撤销</view>
-      </view>
-    </view>
+      </block>
+    </block>
   </view>
 
   <!-- 冰箱里有什么:横向 chips 多选原料(排除调料),顶部小搜索防抖 300ms 过滤 -->
@@ -175,32 +193,59 @@
   <!-- 转盘结果弹层:「就吃它了」落账 /「换一个」重转;点遮罩可关闭回到转盘
        z-index 12000:dialog 内部也是 t-popup,默认层级与转盘 popup 同为 11500,
        结果弹层会与转盘平叠(实测被转盘盖住看不见);显式抬高一层保证结果始终盖在转盘之上 -->
-  <t-dialog
+  <!-- 转盘结果弹层:F25 改为 t-popup(与落账确认弹层同风格),加今天/明天/后天三选;
+       z-index 12000:结果弹层须始终盖在转盘之上(转盘 popup 默认 11500) -->
+  <t-popup
     visible="{{wheelResultVisible}}"
+    placement="bottom"
     z-index="{{12000}}"
-    title="今晚就吃"
-    content="{{wheelResultText}}"
-    confirm-btn="就吃它了"
-    cancel-btn="换一个"
-    close-on-overlay-click
-    bind:confirm="onWheelConfirm"
-    bind:cancel="onWheelAgain"
-    bind:close="onWheelResultClose"
-  />
+    bind:visible-change="onWheelResultVisibleChange"
+  >
+    <view slot="content" class="confirm-popup">
+      <view class="confirm-title">今晚就吃</view>
+      <view class="confirm-dish">{{wheelResultText}}</view>
+      <view class="date-option-row">
+        <view
+          wx:for="{{dateOptions}}"
+          wx:key="key"
+          class="date-option {{pendingDate === item.key ? 'date-option-active' : ''}}"
+          data-key="{{item.key}}"
+          bind:tap="onDateOptionTap"
+        >{{item.label}}</view>
+      </view>
+      <view class="confirm-btn-row">
+        <t-button block theme="light" bind:tap="onWheelAgain">换一个</t-button>
+        <t-button block theme="primary" bind:tap="onWheelConfirm">就吃它了</t-button>
+      </view>
+    </view>
+  </t-popup>
 
-  <!-- 「就做这道?」确认落账弹层 -->
-  <t-dialog
+  <!-- F25 「就做这道?」确认落账弹层:菜名 + 今天/明天/后天三选 + 取消/确认 -->
+  <t-popup
     visible="{{dishDialogVisible}}"
-    title="就做这道？"
-    content="{{pendingDishText}}"
-    confirm-btn="确定"
-    cancel-btn="取消"
-    bind:confirm="onDishConfirm"
-    bind:cancel="onDishCancel"
-    bind:close="onDishCancel"
-  />
+    placement="bottom"
+    bind:visible-change="onDishVisibleChange"
+  >
+    <view slot="content" class="confirm-popup">
+      <view class="confirm-title">就做这道？</view>
+      <view class="confirm-dish">{{pendingDishText}}</view>
+      <view class="date-option-row">
+        <view
+          wx:for="{{dateOptions}}"
+          wx:key="key"
+          class="date-option {{pendingDate === item.key ? 'date-option-active' : ''}}"
+          data-key="{{item.key}}"
+          bind:tap="onDateOptionTap"
+        >{{item.label}}</view>
+      </view>
+      <view class="confirm-btn-row">
+        <t-button block theme="light" bind:tap="onDishCancel">取消</t-button>
+        <t-button block theme="primary" bind:tap="onDishConfirm">确定</t-button>
+      </view>
+    </view>
+  </t-popup>
 
-  <!-- 撤销确认弹层:文案写清撤销的是当天最后一条记录 -->
+  <!-- 撤销确认弹层:文案写清撤销的是当天最后一条记录(F25 仍仅指今天) -->
   <t-dialog
     visible="{{undoDialogVisible}}"
     title="撤销记录"
@@ -211,6 +256,34 @@
     bind:cancel="onUndoCancel"
     bind:close="onUndoCancel"
   />
+
+  <!-- F25 删除确认弹层(明天/后天组行级删除):文案带目标日期,避免误删 -->
+  <t-dialog
+    visible="{{deleteDialogVisible}}"
+    title="删除记录"
+    content="将删除{{deleteRow.dateLabel}}的「{{deleteRow.dishName}}」，确定吗？"
+    confirm-btn="{{undoConfirmBtn}}"
+    cancel-btn="取消"
+    bind:confirm="onDeleteConfirm"
+    bind:cancel="onDeleteCancel"
+    bind:close="onDeleteCancel"
+  />
+
+  <!-- F25 原料查看弹层:标题=菜名,内容=该行原料逐行;空数组显示提示文案 -->
+  <t-popup
+    visible="{{ingredientsPopupVisible}}"
+    placement="bottom"
+    bind:visible-change="onIngredientsVisibleChange"
+  >
+    <view slot="content" class="confirm-popup">
+      <view class="confirm-title">{{ingredientsPopupName}}</view>
+      <view wx:if="{{ingredientsPopupList.length === 0}}" class="ingredients-empty">暂无原料记录</view>
+      <view wx:else class="ingredients-list">
+        <view class="ingredients-item" wx:for="{{ingredientsPopupList}}" wx:key="*this">{{item}}</view>
+      </view>
+      <t-button block theme="light" bind:tap="onIngredientsClose">关闭</t-button>
+    </view>
+  </t-popup>
 
   <!-- 统一轻提示 -->
   <t-toast id="t-toast" />

@@ -1,8 +1,12 @@
 /**
  * pages/home/index.js
  * 首页(主包 tab「首页」):今日已定 + 按料找菜 + 手选落账(转盘为 M3-b 独立组件)
- * - 今日已定卡:todayRecords() 列表(菜名 + 时间 HH:mm),每行右侧「撤销」→ t-dialog 确认
+ * - 今明已定卡(F25):upcomingRecords() 三分组(今天/明天/后天,空组整组不渲染),
+ *   每行「原料」弹层查看 + 整行点击跳详情;撤销按钮仅今天组展示 → t-dialog 确认
  *   → undoLastTodayRecord(删除的是当天最后一条记录,弹层文案写清)→ 刷新
+ * - 落账确认弹层(F25):「就做这道？」与转盘结果均改为底部 t-popup,
+ *   加今天/明天/后天三选;addCookRecord 按三选写入对应 dateKey(自然进位跨月跨年),
+ *   toast 文案:今天→「已记录」,明天/后天→「已定到 X M/D」
  * - 冰箱里有什么:横向 chips 多选原料(listIngredients 全量排除调料 isSeasoning),
  *   顶部小 t-search 防抖 300ms 过滤;已选原料可再点取消
  * - 匹配结果区(按需展示):
@@ -30,7 +34,8 @@ import {
   listDishes,
   listIngredients,
   matchDishesByIngredients,
-  todayRecords,
+  upcomingRecords,
+  deleteRecord,
   undoLastTodayRecord,
   DISH_CARD_FIELDS,
 } from '../../api/db.js';
@@ -68,6 +73,28 @@ function formatHHmm(value) {
   return `${hh}:${mm}`;
 }
 
+/** F25 三选日期换算:今天/明天/后天 → dateKey(Date 自然进位,跨月跨年正确) */
+function dateKeyOffset(n) {
+  return dateKey(new Date(Date.now() + n * 86400000));
+}
+
+/** 'YYYY-MM-DD' → 'M/D'(去前导零,分组标题与 toast 文案用) */
+function mdLabel(dateStr) {
+  const [, m, d] = dateStr.split('-');
+  return `${parseInt(m, 10)}/${parseInt(d, 10)}`;
+}
+
+/** 三选 key → 偏移天数(落账 dateKey 换算用) */
+const CONFIRM_DATE_OFFSETS = { today: 0, tomorrow: 1, dayafter: 2 };
+
+/** 落账成功 toast 文案:今天→「已记录」;明天/后天→「已定到 X M/D」 */
+function confirmToastText(key) {
+  const offset = CONFIRM_DATE_OFFSETS[key] || 0;
+  if (offset === 0) return '已记录';
+  const when = offset === 1 ? '明天' : '后天';
+  return `已定到${when} ${mdLabel(dateKeyOffset(offset))}`;
+}
+
 Page({
   behaviors: [useToastBehavior],
 
@@ -84,8 +111,19 @@ Page({
       [{ width: '30%', height: '32rpx' }],
       [{ width: '160rpx', height: '56rpx' }, { width: '160rpx', height: '56rpx' }, { width: '160rpx', height: '56rpx' }],
     ],
-    today: [], // 今日已定列表:{_id, dishName, time}
+    // F25 今明已定三分组(空组整组不渲染,页面按 group.rows.length 判断)
+    todayGroups: [],
+    todayTotal: 0, // 三组合计条数(0 时显示空态文案)
     ingredientKeyword: '', // 冰箱原料搜索关键字(同时作为菜名/原料名模糊搜索词)
+    pendingDate: 'today', // F25 落账三选:'today' | 'tomorrow' | 'dayafter'
+    dateOptions: [
+      { key: 'today', label: '今天' },
+      { key: 'tomorrow', label: '明天' },
+      { key: 'dayafter', label: '后天' },
+    ],
+    ingredientsPopupVisible: false, // F25 原料查看弹层
+    ingredientsPopupName: '', // 原料弹层标题(菜名)
+    ingredientsPopupList: [], // 原料弹层内容(原料名列表,空显示「暂无原料记录」)
     hasDishKeyword: false, // 搜索框是否有非空关键词(归一化后),wxml 引导态判定用
     ingredientChips: [], // 冰箱原料 chips:{name, active}(已排除调料)
     selectedNames: [], // 已选原料名
@@ -104,6 +142,8 @@ Page({
     undoDialogVisible: false, // 撤销确认弹层
     undoConfirmBtn: { content: '撤销', theme: 'danger' }, // 撤销按钮(红色)
     undoName: '', // 将撤销的菜名(当天最后一条记录)
+    deleteDialogVisible: false, // F25 删除确认弹层(明天/后天组行级删除)
+    deleteRow: null, // 将删除的行 {recordId, dishName, dateLabel}
     wheelDisabled: true, // 转盘入口是否禁用(候选为空:无匹配/无菜谱)
     wheelVisible: false, // 转盘半屏弹层显隐
     wheelSpinning: false, // 转盘旋转中(开始按钮置灰)
@@ -158,8 +198,12 @@ Page({
     const seq = this.nextSeq();
     // 引导态 refreshMatch 不查询,首屏骨架由原料 chips 与今日记录加载完成后统一关闭
     this.refreshMatch(seq, false);
-    // 身份加载与数据加载并行:身份未就绪时今日卡先按未分配池('')查,不阻塞 UI
-    this.loadIdentity();
+    // 身份加载与数据加载并行:身份未就绪时今日卡先按未分配池('')查,不阻塞 UI;
+    // 身份就绪后必须补刷一次今日卡(F25):否则按''查到的空组会一直停留到下次 onShow,
+    // 家庭成员打开小程序会短暂看到"今明已定"为空(F24 既有缺陷,F25 三分组下更易感知)
+    this.loadIdentity().then(() => {
+      if (this.member) this.refreshToday(true);
+    });
     await Promise.all([this.loadIngredients(''), this.refreshToday(false)]);
     if (seq === this.requestSeq) this.setData({ loading: false });
   },
@@ -257,25 +301,36 @@ Page({
 
   /* ---------------- 今日已定 ---------------- */
 
-  /** 拉取今日记录并组装展示行(菜名 + 本地 HH:mm);silent=true 时失败不打扰用户 */
+  /** F25 拉取今/明/后三组记录并组装展示行(菜名 + 本地 HH:mm + 原料列表);
+   *  空组整组不渲染(页面按 rows.length 判断),全空时显示空态文案 */
   async refreshToday(silent) {
     try {
-      const records = await todayRecords(dateKey(), this.member ? this.member.familyId : '');
-      const today = records.map((record) => ({
-        _id: record._id,
-        dishName: record.dishName || '未知菜品',
-        time: formatHHmm(record.createdAt),
-      }));
-      this.setData({ today });
+      const res = await upcomingRecords(this.member ? this.member.familyId : '');
+      const buildRows = (records) =>
+        records.map((record) => ({
+          _id: record._id,
+          dishName: record.dishName || '未知菜品',
+          dishId: record.dishId || '', // 行点击跳详情用;异常数据为空时不跳
+          time: formatHHmm(record.createdAt),
+          ingredients: record.ingredientNames || [],
+        }));
+      const todayGroups = [
+        { key: 'today', label: `今天 ${mdLabel(dateKeyOffset(0))}`, rows: buildRows(res.today) },
+        { key: 'tomorrow', label: `明天 ${mdLabel(dateKeyOffset(1))}`, rows: buildRows(res.tomorrow) },
+        { key: 'dayafter', label: `后天 ${mdLabel(dateKeyOffset(2))}`, rows: buildRows(res.dayafter) },
+      ];
+      this.setData({ todayGroups, todayTotal: res.total });
     } catch (err) {
       console.error('今日记录加载失败', err);
       if (!silent) this.showFail();
     }
   },
 
-  /** 点击「撤销」:打开确认弹层,提示将撤销当天最后一条记录(列表倒序,第一条即最后一条) */
+  /** 点击「撤销」:打开确认弹层,提示将撤销当天最后一条记录(今天组倒序,第一条即最后一条);
+   *  F25 撤销按钮只在今天组展示,undoLastTodayRecord 语义不变 */
   onUndoTap() {
-    const last = this.data.today[0];
+    const todayGroup = this.data.todayGroups.find((g) => g.key === 'today');
+    const last = todayGroup && todayGroup.rows[0];
     if (!last) return;
     this.setData({
       undoName: last.dishName,
@@ -296,6 +351,39 @@ Page({
       this.refreshToday(true);
     } catch (err) {
       console.error('撤销记录失败', err);
+      this.showFail();
+    }
+  },
+
+  /* ---------------- F25 明天/后天组:行级删除 ---------------- */
+
+  /** 点击「删除」:打开确认弹层(带菜名与目标日期),按 recordId 精确删单条 */
+  onDeleteTap(e) {
+    const { gkey, index } = e.currentTarget.dataset;
+    const group = this.data.todayGroups.find((g) => g.key === gkey);
+    const row = group && group.rows[index];
+    if (!row || !row._id) return;
+    this.setData({
+      deleteRow: { recordId: row._id, dishName: row.dishName, dateLabel: group.label },
+      deleteDialogVisible: true,
+    });
+  },
+
+  onDeleteCancel() {
+    this.setData({ deleteDialogVisible: false });
+  },
+
+  /** 确认删除:deleteRecord 校验家庭快照后删单条,随后刷新今日卡 */
+  async onDeleteConfirm() {
+    const row = this.data.deleteRow;
+    this.setData({ deleteDialogVisible: false });
+    if (!row) return;
+    try {
+      const res = await deleteRecord(row.recordId, this.member ? this.member.familyId : '');
+      this.onShowToast('#t-toast', res.removed ? '已删除' : '记录不存在或已变更');
+      this.refreshToday(true);
+    } catch (err) {
+      console.error('删除记录失败', err);
       this.showFail();
     }
   },
@@ -544,32 +632,78 @@ Page({
     return cards;
   },
 
-  /** 点击匹配卡片:打开「就做这道?」确认弹层 */
+  /** 点击匹配卡片:打开「就做这道?」确认弹层(每次打开重置三选为今天) */
   onDishTap(e) {
     const { id, name } = e.currentTarget.dataset;
     this.setData({
       pendingDishId: id,
-      pendingDishText: `「${name}」，确定今天做这道吗？`,
+      pendingDishText: `「${name}」`,
+      pendingDate: 'today',
       dishDialogVisible: true,
     });
+  },
+
+  /** F25 落账三选按钮:选中项高亮(两个弹层共用) */
+  onDateOptionTap(e) {
+    const { key } = e.currentTarget.dataset;
+    if (key && key !== this.data.pendingDate) this.setData({ pendingDate: key });
+  },
+
+  /** 落账确认弹层遮罩/下拉关闭:受控组件回写 visible */
+  onDishVisibleChange(e) {
+    const detail = e.detail || {};
+    const visible = typeof detail === 'boolean' ? detail : detail.visible;
+    if (visible === false) this.setData({ dishDialogVisible: false });
   },
 
   onDishCancel() {
     this.setData({ dishDialogVisible: false });
   },
 
-  /** 确认落账:addCookRecord 写一条 records,toast 后刷新今日卡 */
+  /** 确认落账:addCookRecord 按 F25 三选写入对应日期;toast 文案区分今天/明天/后天 */
   async onDishConfirm() {
-    const { pendingDishId } = this.data;
+    const { pendingDishId, pendingDate } = this.data;
+    const offset = CONFIRM_DATE_OFFSETS[pendingDate] || 0;
     this.setData({ dishDialogVisible: false });
     try {
-      await addCookRecord(pendingDishId, this.member ? this.member.familyId : '');
-      this.onShowToast('#t-toast', '已记录');
+      await addCookRecord(pendingDishId, this.member ? this.member.familyId : '', dateKeyOffset(offset));
+      this.onShowToast('#t-toast', confirmToastText(pendingDate));
       this.refreshToday(true);
     } catch (err) {
       console.error('落账失败', err);
       this.showFail();
     }
+  },
+
+  /** F25 行点击「原料」:打开原料查看弹层(catch:tap 不触发行跳详情) */
+  onIngredientsTap(e) {
+    const { gkey, index } = e.currentTarget.dataset;
+    const group = this.data.todayGroups.find((g) => g.key === gkey);
+    const row = group && group.rows[index];
+    if (!row) return;
+    this.setData({
+      ingredientsPopupVisible: true,
+      ingredientsPopupName: row.dishName,
+      ingredientsPopupList: row.ingredients,
+    });
+  },
+
+  /** 原料弹层遮罩/下拉关闭:受控组件回写 visible */
+  onIngredientsVisibleChange(e) {
+    const detail = e.detail || {};
+    const visible = typeof detail === 'boolean' ? detail : detail.visible;
+    if (visible === false) this.setData({ ingredientsPopupVisible: false });
+  },
+
+  onIngredientsClose() {
+    this.setData({ ingredientsPopupVisible: false });
+  },
+
+  /** F25 整行点击跳菜品详情(dishId 为空的异常数据不跳) */
+  onTodayRowTap(e) {
+    const { id } = e.currentTarget.dataset;
+    if (!id) return;
+    wx.navigateTo({ url: `/packages/dish/detail?id=${id}` });
   },
 
   /** 触底翻页:仅「未选原料且已选分类」浏览模式追加下一页(匹配/引导态不翻页) */
@@ -686,21 +820,24 @@ Page({
       wheelSpinning: false,
       wheelResultItem: item,
       wheelResultText: item ? `今晚就吃：${item.name}` : '',
+      pendingDate: 'today', // F25 结果弹层三选每次重置为今天
     });
     setTimeout(() => {
       this.setData({ wheelVisible: false, wheelResultVisible: true });
     }, 800);
   },
 
-  /** 结果确认「就吃它了」:关结果弹层 → 落账 → toast → 刷新今日卡
+  /** 结果确认「就吃它了」:关结果弹层 → 按 F25 三选落账 → toast → 刷新今日卡
    *  (转盘在停转时已收,无需再关 wheelVisible) */
   async onWheelConfirm() {
     const item = this.data.wheelResultItem;
+    const { pendingDate } = this.data;
+    const offset = CONFIRM_DATE_OFFSETS[pendingDate] || 0;
     this.setData({ wheelResultVisible: false });
     if (!item) return;
     try {
-      await addCookRecord(item.id, this.member ? this.member.familyId : '');
-      this.onShowToast('#t-toast', '已记录');
+      await addCookRecord(item.id, this.member ? this.member.familyId : '', dateKeyOffset(offset));
+      this.onShowToast('#t-toast', confirmToastText(pendingDate));
       this.refreshToday(true);
     } catch (err) {
       console.error('转盘落账失败', err);
@@ -719,9 +856,12 @@ Page({
     }, 400);
   },
 
-  /** 结果弹层点遮罩/关闭:仅关闭结果弹窗,不动转盘(此时转盘已收) */
-  onWheelResultClose() {
-    this.setData({ wheelResultVisible: false });
+  /** 结果弹层点遮罩/关闭:仅关闭结果弹窗,不动转盘(此时转盘已收);
+   *  F25 改为 t-popup 后由 visible-change 触达 */
+  onWheelResultVisibleChange(e) {
+    const detail = e.detail || {};
+    const visible = typeof detail === 'boolean' ? detail : detail.visible;
+    if (visible === false) this.setData({ wheelResultVisible: false });
   },
 
   /** 统一失败提示 */
