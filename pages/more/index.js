@@ -41,9 +41,9 @@ Page({
     wx.navigateTo({ url: '/packages/family/index' });
   },
 
-  /** 跳转 AI 设置页(分包 packages/ai;主包零 import 分包,仅页面跳转) */
+  /** 跳转 AI 设置页(分包 packages/dish/ai;主包零 import 分包,仅页面跳转) */
   onAiSettings() {
-    wx.navigateTo({ url: '/packages/ai/settings' });
+    wx.navigateTo({ url: '/packages/dish/ai/settings' });
   },
 
   /** 跳转原料库管理页(分包 packages/ingredient) */

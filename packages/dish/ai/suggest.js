@@ -7,9 +7,9 @@
  * - 「就吃这个」:wx.setStorageSync('aiPick', name) 后返回,首页 onShow 读取(不强制自动落账)
  * 注意:数据库操作走主包 api/db.js 与 api/identity.js 封装(分包可引主包,反向禁止)。
  */
-import useToastBehavior from '../../behaviors/useToast.js';
-import { ensureIdentity } from '../../api/identity.js';
-import { fetchAllDishes, statsAggregate, upcomingRecords, dateKey } from '../../api/db.js';
+import useToastBehavior from '../../../behaviors/useToast.js';
+import { ensureIdentity } from '../../../api/identity.js';
+import { fetchAllDishes, statsAggregate, upcomingRecords, dateKey } from '../../../api/db.js';
 import { getAiConfig } from './config.js';
 import { generateText, extractJson } from './text.js';
 

@@ -17,10 +17,10 @@ import { normalizeName } from '../../utils/normalize.js';
 import { SEASONING_SET } from '../../utils/seasonings.js';
 import { isCloudFileId } from '../../utils/image.js';
 import { resolveImgUrls } from '../../utils/imgUrl.js';
-import { getAiConfig } from '../ai/config.js';
-import { generateDishImage, attachImageToDish } from '../ai/api.js';
-import { generateRecipeDraft } from '../ai/recipe.js';
-import { DEFAULT_PROMPTS, buildImagePrompt } from '../ai/prompts.js';
+const { getAiConfig } = require('./ai/config.js');
+const { generateDishImage, attachImageToDish } = require('./ai/api.js');
+const { generateRecipeDraft } = require('./ai/recipe.js');
+const { DEFAULT_PROMPTS, buildImagePrompt } = require('./ai/prompts.js');
 
 /** 每菜图片上限 */
 const MAX_IMAGES = 5;
@@ -66,7 +66,7 @@ Page({
     quickAddIsSeasoning: false, // 即时新增默认调料标记(搜索词变化时按调料表重算,用户可手动改)
     ingredientCandidates: [], // 原料搜索结果(带 checked 标记)
     duplicateVisible: false, // 重名确认弹窗
-    aiImageEnabled: false, // AI 生图入口开关(仅编辑模式拉取,新建无落点恒 false)
+    aiImageEnabled: false, // AI 生图入口开关(新建/编辑统一拉取,F29)
     aiPopupVisible: false, // AI 生图弹层
     aiPrompt: '', // 生图提示词
     aiGenerating: false, // 生成中(防重复点击)
@@ -88,13 +88,13 @@ Page({
     this.searchTimer = null; // 原料搜索防抖定时器
     this.stepSeq = 1; // 步骤 id 计数器
 
+    // AI 入口开关:新建/编辑都要(失败按 false,不弹错误);F29:新建模式同样可用
+    getAiConfig()
+      .then((cfg) => this.setData({ aiImageEnabled: cfg.imageEnabled, aiRecipeEnabled: cfg.textEnabled }))
+      .catch(() => {});
     if (id) {
       wx.setNavigationBarTitle({ title: '编辑菜品' });
       this.loadDish(id);
-      // AI 生图入口开关(失败按 false,不弹错误);F28:同时拉生文开关控制「AI 写做法」入口
-      getAiConfig()
-        .then((cfg) => this.setData({ aiImageEnabled: cfg.imageEnabled, aiRecipeEnabled: cfg.textEnabled }))
-        .catch(() => {});
     } else {
       wx.setNavigationBarTitle({ title: '新增菜品' });
       this.setData({ loading: false });

@@ -74,9 +74,9 @@ Page({
 
   /* ---------------- AI 小结入口 ---------------- */
 
-  /** 跳转 AI 报菜员小结页(分包 packages/ai;主包零 import 分包,仅页面跳转) */
+  /** 跳转 AI 报菜员小结页(分包 packages/dish/ai;主包零 import 分包,仅页面跳转) */
   onAiSummary() {
-    wx.navigateTo({ url: '/packages/ai/summary' });
+    wx.navigateTo({ url: '/packages/dish/ai/summary' });
   },
 
   /** 上一期:offset - 1(过去期永远允许) */

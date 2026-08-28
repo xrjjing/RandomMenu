@@ -8,13 +8,13 @@
  * - F28 提示词区块:生图词根/推荐/小结/做法 四个提示词,单套可编辑 + 逐项恢复默认
  * 逻辑原样迁自 packages/family/index.js,方法名/数据字段保持一致。
  */
-import useToastBehavior from '../../behaviors/useToast.js';
-import { ensureIdentity, isFamilyAdmin } from '../../api/identity.js';
+import useToastBehavior from '../../../behaviors/useToast.js';
+import { ensureIdentity, isFamilyAdmin } from '../../../api/identity.js';
 import { getAiConfig, setAiConfig } from './config.js';
 import { DEFAULT_PROMPTS, PROMPT_LIMITS } from './prompts.js';
-import { fetchAllDishes } from '../../api/db.js';
+import { fetchAllDishes } from '../../../api/db.js';
 import { generateDishImage, attachImageToDish } from './api.js';
-import { resolveImgUrls } from '../../utils/imgUrl.js';
+import { resolveImgUrls } from '../../../utils/imgUrl.js';
 
 /** AI 补图单次弹层会话生成上限(防误触刷爆额度) */
 const REPAIR_LIMIT = 10;

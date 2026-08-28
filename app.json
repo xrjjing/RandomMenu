@@ -1,25 +1,35 @@
 {
-  "pages": ["pages/home/index", "pages/menu/index", "pages/stats/index", "pages/more/index"],
+  "pages": [
+    "pages/home/index",
+    "pages/menu/index",
+    "pages/stats/index",
+    "pages/more/index"
+  ],
   "subpackages": [
     {
       "root": "packages/ingredient",
       "name": "ingredient",
-      "pages": ["index"]
+      "pages": [
+        "index"
+      ]
     },
     {
       "root": "packages/dish",
       "name": "dish",
-      "pages": ["detail", "edit"]
+      "pages": [
+        "detail",
+        "edit",
+        "ai/settings",
+        "ai/summary",
+        "ai/suggest"
+      ]
     },
     {
       "root": "packages/family",
       "name": "family",
-      "pages": ["index"]
-    },
-    {
-      "root": "packages/ai",
-      "name": "ai",
-      "pages": ["settings", "summary", "suggest"]
+      "pages": [
+        "index"
+      ]
     }
   ],
   "window": {

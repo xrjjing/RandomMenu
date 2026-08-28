@@ -6,9 +6,9 @@
  * - 生成:generateText(messages) 混元 hy3,system 约束只许使用给定数据,120 字内
  * 注意:数据库操作走主包 api/db.js 与 api/identity.js 封装(分包可引主包,反向禁止)。
  */
-import useToastBehavior from '../../behaviors/useToast.js';
-import { ensureIdentity } from '../../api/identity.js';
-import { statsAggregate, upcomingRecords, dateKey } from '../../api/db.js';
+import useToastBehavior from '../../../behaviors/useToast.js';
+import { ensureIdentity } from '../../../api/identity.js';
+import { statsAggregate, upcomingRecords, dateKey } from '../../../api/db.js';
 import { getAiConfig } from './config.js';
 import { generateText } from './text.js';
 

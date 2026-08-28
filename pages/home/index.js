@@ -749,9 +749,9 @@ Page({
     this.openWheel();
   },
 
-  /** AI 推荐入口:跳转分包 packages/ai/suggest(主包零 import 分包,仅页面跳转) */
+  /** AI 推荐入口:跳转分包 packages/dish/ai/suggest(主包零 import 分包,仅页面跳转) */
   onAiRecommend() {
-    wx.navigateTo({ url: '/packages/ai/suggest' });
+    wx.navigateTo({ url: '/packages/dish/ai/suggest' });
   },
 
   /**
