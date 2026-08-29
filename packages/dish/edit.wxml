@@ -19,6 +19,10 @@
         <t-radio label="餐食" value="meal" />
         <t-radio label="饮品" value="drink" />
       </t-radio-group>
+      <view wx:if="{{aiRecipeEnabled}}" class="ai-fill-row">
+        <t-button class="ai-fill-btn" size="small" variant="outline" loading="{{aiFillLoading}}" bind:tap="onAiFill">✨ AI 补全信息</t-button>
+        <text class="ai-fill-tip">补全分类 / 时间 / 难度 / 标签，请核对后保存</text>
+      </view>
     </view>
 
     <!-- 细分标签卡:常用 chips 多选 + 自定义标签新增 -->
@@ -234,6 +238,10 @@
         autosize
         bind:change="onAiPromptChange"
       />
+      <view wx:if="{{images.length > 0}}" class="ai-img2img-row">
+        <t-switch value="{{aiUseRefImage}}" bind:change="onAiUseRefImageChange" />
+        <text class="ai-tip">参考第一张现有图（图生图）</text>
+      </view>
       <view wx:if="{{aiPreviewUrl}}" class="ai-preview">
         <image class="ai-preview-img" src="{{aiPreviewUrl}}" mode="aspectFit" />
       </view>
@@ -266,18 +274,38 @@
     <view class="ai-popup">
       <view class="ai-popup-title">AI 写做法（草稿）</view>
       <view class="recipe-dish">菜名：{{name}}</view>
-      <t-textarea
-        value="{{recipeHint}}"
-        placeholder="补充特色/要点（可跳过），如：少辣、用电饭煲"
-        maxlength="100"
-        autosize
-        bind:change="onRecipeHintChange"
-      />
-      <view class="ai-tip">生成后填入下方做法步骤，请核对修改后再保存</view>
-      <view class="ai-popup-btns">
-        <t-button variant="outline" size="small" disabled="{{recipeGenerating}}" bind:tap="onRecipeCancel">取消</t-button>
-        <t-button theme="primary" size="small" loading="{{recipeGenerating}}" bind:tap="onRecipeGenerate">生成</t-button>
-      </view>
+
+      <!-- input / generating 态:输入菜名要点,生成中流式回显 -->
+      <block wx:if="{{!recipeResult}}">
+        <t-textarea
+          value="{{recipeHint}}"
+          placeholder="补充特色/要点（可跳过），如：少辣、用电饭煲"
+          maxlength="100"
+          autosize
+          bind:change="onRecipeHintChange"
+        />
+        <!-- F30 #7 流式:生成中实时回显草稿,完成进入 result 态展示 -->
+        <view wx:if="{{recipeGenerating || recipeStreamText}}" class="recipe-stream-wrap">
+          <text class="recipe-stream-label">{{recipeGenerating ? '正在生成…' : ''}}</text>
+          <view class="recipe-stream-text">{{recipeStreamText}}</view>
+        </view>
+        <view class="ai-tip">生成后填入下方做法步骤，请核对修改后再保存</view>
+        <view class="ai-popup-btns">
+          <t-button variant="outline" size="small" disabled="{{recipeGenerating}}" bind:tap="onRecipeCancel">取消</t-button>
+          <t-button theme="primary" size="small" loading="{{recipeGenerating}}" bind:tap="onRecipeGenerate">生成</t-button>
+        </view>
+      </block>
+
+      <!-- result 态:展示全文 + 覆盖填入/放弃 -->
+      <block wx:else>
+        <scroll-view scroll-y class="recipe-result-scroll">
+          <view class="recipe-result-text">{{recipeResult}}</view>
+        </scroll-view>
+        <view class="ai-popup-btns">
+          <t-button variant="outline" size="small" bind:tap="onRecipeDiscard">放弃</t-button>
+          <t-button theme="primary" size="small" bind:tap="onRecipeApply">覆盖填入</t-button>
+        </view>
+      </block>
     </view>
   </t-popup>
 

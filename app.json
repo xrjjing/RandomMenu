@@ -1,17 +1,10 @@
 {
-  "pages": [
-    "pages/home/index",
-    "pages/menu/index",
-    "pages/stats/index",
-    "pages/more/index"
-  ],
+  "pages": ["pages/home/index", "pages/menu/index", "pages/stats/index", "pages/more/index"],
   "subpackages": [
     {
       "root": "packages/ingredient",
       "name": "ingredient",
-      "pages": [
-        "index"
-      ]
+      "pages": ["index"]
     },
     {
       "root": "packages/dish",
@@ -21,15 +14,17 @@
         "edit",
         "ai/settings",
         "ai/summary",
-        "ai/suggest"
+        "ai/suggest",
+        "ai/brief",
+        "ai/monthly",
+        "ai/prompt-list",
+        "ai/prompt-edit"
       ]
     },
     {
       "root": "packages/family",
       "name": "family",
-      "pages": [
-        "index"
-      ]
+      "pages": ["index"]
     }
   ],
   "window": {

@@ -1,0 +1,20 @@
+<view class="page prompts-page">
+  <view class="card section-card">
+    <view class="section-title">提示词管理</view>
+    <view class="ai-note">各 AI 功能使用的提示词；点击条目进入详情编辑，恢复默认即回退内置版本。新增 AI 功能时此处会自动增加条目。</view>
+    <t-cell-group>
+      <t-cell
+        wx:for="{{items}}"
+        wx:key="key"
+        title="{{item.label}}"
+        description="{{item.desc}}"
+        arrow="{{true}}"
+        hover="{{true}}"
+        data-key="{{item.key}}"
+        bind:click="onItemTap"
+      />
+    </t-cell-group>
+  </view>
+
+  <t-toast id="t-toast" />
+</view>

@@ -17,9 +17,11 @@ import { normalizeName } from '../../utils/normalize.js';
 import { SEASONING_SET } from '../../utils/seasonings.js';
 import { isCloudFileId } from '../../utils/image.js';
 import { resolveImgUrls } from '../../utils/imgUrl.js';
+
 const { getAiConfig } = require('./ai/config.js');
 const { generateDishImage, attachImageToDish } = require('./ai/api.js');
-const { generateRecipeDraft } = require('./ai/recipe.js');
+const { generateRecipeDraftStream } = require('./ai/recipe.js');
+const { generateDishFill } = require('./ai/fill.js');
 const { DEFAULT_PROMPTS, buildImagePrompt } = require('./ai/prompts.js');
 
 /** 每菜图片上限 */
@@ -27,9 +29,24 @@ const MAX_IMAGES = 5;
 
 /** 细分标签固定选项(餐食 + 饮品,供 chips 多选) */
 const COMMON_TAGS = [
-  '主食', '汤羹', '猪肉', '禽肉', '鱼虾', '素菜', '蛋类',
-  '鲜榨果汁', '奶茶', '奶昔', '果茶', '咖啡拿铁', '养生热饮',
-  '豆浆米糊', '甜品饮品', '消暑饮品', '冷饮', '热饮',
+  '主食',
+  '汤羹',
+  '猪肉',
+  '禽肉',
+  '鱼虾',
+  '素菜',
+  '蛋类',
+  '鲜榨果汁',
+  '奶茶',
+  '奶昔',
+  '果茶',
+  '咖啡拿铁',
+  '养生热饮',
+  '豆浆米糊',
+  '甜品饮品',
+  '消暑饮品',
+  '冷饮',
+  '热饮',
 ];
 
 /** 烹饪时间选项 */
@@ -72,11 +89,16 @@ Page({
     aiGenerating: false, // 生成中(防重复点击)
     aiPreviewUrl: '', // 生成图预览临时链接(fileID 换链后)
     aiPreviewFileId: '', // 生成图 cloud:// fileID(采用时写入 dishes.images)
+    aiUseRefImage: false, // F30 #8 图生图:是否参考第一张现有图片(以现有图为底生成)
     aiError: '', // 生成/采用失败文案(卡片内红字)
     aiRecipeEnabled: false, // AI 写做法入口开关(仅编辑模式拉取,跟 textEnabled)
+    // AI 写做法弹层三态:input(填入菜名/要点)/ generating(流式生成中)/ result(展示全文待覆盖或放弃)
     recipePopupVisible: false, // AI 写做法确认弹层
     recipeHint: '', // 补充"特色/要点"(可跳过)
     recipeGenerating: false, // 生成中(防重复)
+    recipeStreamText: '', // F30 #7 流式回显(生成中实时累计的草稿预览)
+    recipeResult: '', // 生成结果(非空 = result 态,展示全文,可由用户覆盖/放弃)
+    aiFillLoading: false, // AI 补全信息生成中(防重复)
   },
 
   onLoad(options) {
@@ -122,9 +144,7 @@ Page({
               isSeasoning: SEASONING_SET.has(name),
             }));
       const steps =
-        dish.steps && dish.steps.length
-          ? dish.steps.map((text, i) => ({ id: i, text }))
-          : [{ id: 0, text: '' }];
+        dish.steps && dish.steps.length ? dish.steps.map((text, i) => ({ id: i, text })) : [{ id: 0, text: '' }];
       this.stepSeq = steps.length;
       const selectedTags = dish.tags || [];
       this.setData({
@@ -231,6 +251,49 @@ Page({
     this.setData({ cookTimeVisible: false, difficultyVisible: false });
   },
 
+  /** AI 补全信息:根据菜名+原料推断分类/时间/难度/标签,填充表单(请核对后保存) */
+  async onAiFill() {
+    const dishName = (this.data.name || '').trim();
+    if (!dishName) {
+      this.onShowToast('#t-toast', '请先填写菜名');
+      return;
+    }
+    if (this.data.aiFillLoading) return;
+    this.setData({ aiFillLoading: true });
+    try {
+      const res = await generateDishFill({
+        name: dishName,
+        ingredients: this.data.ingredients,
+      });
+      if (!res.ok) {
+        this.onShowToast('#t-toast', res.error);
+        this.setData({ aiFillLoading: false });
+        return;
+      }
+      const d = res.data || {};
+      // 固定枚举校验:不合法值保持原值,只接受预定义选项
+      const category = d.category === 'drink' || d.category === 'meal' ? d.category : this.data.category;
+      const cookTime = COOK_TIME_OPTIONS.includes(d.cookTime) ? d.cookTime : this.data.cookTime;
+      const difficulty = DIFFICULTY_OPTIONS.includes(d.difficulty) ? d.difficulty : this.data.difficulty;
+      const selectedTags = Array.isArray(d.tags)
+        ? d.tags.filter((tag) => COMMON_TAGS.includes(tag)).slice(0, 3)
+        : this.data.selectedTags; // 模型漏出 tags 时保留用户已选,与其它字段「非法保留原值」一致
+      this.setData({
+        category,
+        cookTime,
+        difficulty,
+        selectedTags,
+        tagChips: this.buildTagChips(selectedTags),
+        aiFillLoading: false,
+      });
+      this.onShowToast('#t-toast', '已补全，请核对后保存');
+    } catch (err) {
+      console.error('AI 补全信息失败', err);
+      this.setData({ aiFillLoading: false });
+      this.onShowToast('#t-toast', err.message || '补全失败，请重试');
+    }
+  },
+
   /* ---------------- 图片 ---------------- */
 
   /** 点击 ➕ 格:选择并上传图片;超限拒绝的 toast 在此提示 */
@@ -331,10 +394,12 @@ Page({
   onQuickAddIngredient() {
     const name = normalizeName(this.data.searchKw);
     if (!name || this.data.ingredients.some((ing) => ing.name === name)) return;
-    const isSeasoning = this.data.quickAddIsSeasoning ?? SEASONING_SET.has(name);
-    const ingredients = this.data.ingredients.concat([
-      { id: '', name, amount: '', isSeasoning },
-    ]);
+    // 等价 `??`:显式 false(用户手动取消「设为调料」)保留 false,不回退调料表判定
+    const isSeasoning =
+      this.data.quickAddIsSeasoning !== null && this.data.quickAddIsSeasoning !== undefined
+        ? this.data.quickAddIsSeasoning
+        : SEASONING_SET.has(name);
+    const ingredients = this.data.ingredients.concat([{ id: '', name, amount: '', isSeasoning }]);
     // 关弹层 + 清搜索词 + 清调料标记 + toast 反馈:一次 setData 完成状态收尾,避免弹层残留与无反馈
     this.setData({ ingredients, popupVisible: false, searchKw: '', quickAddIsSeasoning: false });
     this.onShowToast('#t-toast', `已添加「${name}」`);
@@ -410,13 +475,19 @@ Page({
   /** 删除步骤(至少保留一行) */
   onStepRemove(e) {
     const { index } = e.currentTarget.dataset;
-    const steps = this.data.steps.filter((_, i) => i !== index);
-    this.setData({ steps: steps.length ? steps : [{ id: this.stepSeq++, text: '' }] });
+    let steps = this.data.steps.filter((_, i) => i !== index);
+    if (steps.length === 0) {
+      steps = [{ id: this.stepSeq, text: '' }];
+      this.stepSeq += 1;
+    }
+    this.setData({ steps });
   },
 
   /** 添加步骤 */
   onAddStep() {
-    this.setData({ steps: this.data.steps.concat([{ id: this.stepSeq++, text: '' }]) });
+    const id = this.stepSeq;
+    this.stepSeq += 1;
+    this.setData({ steps: this.data.steps.concat([{ id, text: '' }]) });
   },
 
   /* ---------------- AI 生图 ---------------- */
@@ -434,8 +505,14 @@ Page({
     this.setData({
       aiPopupVisible: true,
       aiError: '',
+      aiUseRefImage: false,
       aiPrompt: buildImagePrompt(base, style),
     });
+  },
+
+  /** 图生图开关(F30 #8):只有菜肴已有图片时才有意义,开关联动第一张现有图 */
+  onAiUseRefImageChange(e) {
+    this.setData({ aiUseRefImage: !!e.detail.value });
   },
 
   /** AI 弹层遮罩关闭 */
@@ -458,7 +535,10 @@ Page({
     }
     this.setData({ aiGenerating: true, aiError: '' });
     try {
-      const fileID = await generateDishImage(prompt);
+      const fileID = await generateDishImage(prompt, {
+        // F30 #8 图生图:开关开启且有现有图时,以第一张现有图为参考(云函数侧转 I2I 模型)
+        imageFileId: this.data.aiUseRefImage && this.data.images.length > 0 ? this.data.images[0] : '',
+      });
       const urls = await resolveImgUrls([fileID]);
       this.setData({ aiPreviewFileId: fileID, aiPreviewUrl: urls[0] || '', aiGenerating: false });
     } catch (err) {
@@ -518,7 +598,7 @@ Page({
 
   /** 打开确认弹层:展示将使用的菜名,可补充要点后生成 */
   onOpenRecipePopup() {
-    this.setData({ recipePopupVisible: true, recipeHint: '', aiError: '' });
+    this.setData({ recipePopupVisible: true, recipeHint: '', recipeStreamText: '', recipeResult: '', aiError: '' });
   },
 
   /** 确认弹层遮罩关闭 */
@@ -536,7 +616,7 @@ Page({
     this.setData({ recipePopupVisible: false });
   },
 
-  /** 生成:调 generateRecipeDraft,成功填入做法,失败 toast */
+  /** 生成:调 generateRecipeDraftStream;成功后不关弹层,进入 result 态展示全文,失败 toast */
   async onRecipeGenerate() {
     if (this.data.recipeGenerating) return;
     const name = (this.data.name || '').trim();
@@ -544,47 +624,52 @@ Page({
       this.onShowToast('#t-toast', '请先填写菜名');
       return;
     }
-    this.setData({ recipeGenerating: true });
+    this.setData({ recipeGenerating: true, recipeStreamText: '', recipeResult: '' });
     try {
-      const res = await generateRecipeDraft(name, this.data.recipeHint);
+      // F30 #7 流式:逐段回显到弹层「正在生成」预览区,完成后展示在 result 态(不自动关闭)
+      const res = await generateRecipeDraftStream(name, this.data.recipeHint, (chunk) => {
+        this.setData({ recipeStreamText: this.data.recipeStreamText + chunk });
+      });
       if (!res.ok) {
-        this.setData({ recipeGenerating: false });
+        this.setData({ recipeGenerating: false, recipeStreamText: '' });
         this.onShowToast('#t-toast', res.error || '生成失败，请重试');
         return;
       }
-      this.setData({ recipeGenerating: false, recipePopupVisible: false });
-      this.applyRecipeDraft(res.text);
+      this.setData({ recipeGenerating: false, recipeStreamText: '', recipeResult: res.text });
     } catch (err) {
       // 理论上 recipe.js 已收口,防御性兜底
       console.error('AI 写做法失败', err);
-      this.setData({ recipeGenerating: false });
+      this.setData({ recipeGenerating: false, recipeStreamText: '' });
       this.onShowToast('#t-toast', '生成失败，请重试');
     }
   },
 
-  /** 把草稿按行拆入做法步骤;已有内容时先弹确认(用户确认才覆盖) */
+  /** 结果态「覆盖填入」:关弹层并直接填入做法(不再弹第二次确认) */
+  onRecipeApply() {
+    const text = this.data.recipeResult;
+    this.setData({ recipePopupVisible: false, recipeResult: '', recipeStreamText: '', recipeHint: '' });
+    if (text) this.applyRecipeDraft(text);
+  },
+
+  /** 结果态「放弃」:关弹层并清空结果(仅页面态,不动现有步骤) */
+  onRecipeDiscard() {
+    this.setData({ recipePopupVisible: false, recipeResult: '', recipeStreamText: '' });
+  },
+
+  /** 把草稿按行拆入做法步骤(由结果态「覆盖填入」触发,静默覆盖不弹二次确认) */
   applyRecipeDraft(text) {
-    const lines = String(text).split(/\n+/).map((l) => l.trim()).filter(Boolean);
+    const lines = String(text)
+      .split(/\n+/)
+      .map((l) => l.trim())
+      .filter(Boolean);
     if (!lines.length) {
       wx.showToast({ title: '生成失败，请重试', icon: 'none' });
       return;
     }
-    const doApply = () => {
-      this.setData({ steps: lines.map((t) => ({ id: this.stepSeq++, text: t })) });
-      wx.showToast({ title: '已填入草稿', icon: 'none' });
-    };
-    const hasContent = this.data.steps.some((s) => s.text && s.text.trim());
-    if (!hasContent) {
-      doApply();
-      return;
-    }
-    wx.showModal({
-      title: '提示',
-      content: '将覆盖当前做法，确定吗？',
-      success: (res) => {
-        if (res.confirm) doApply();
-      },
-    });
+    const base = this.stepSeq;
+    this.stepSeq += lines.length;
+    this.setData({ steps: lines.map((t, i) => ({ id: base + i, text: t })) });
+    wx.showToast({ title: '已填入草稿', icon: 'none' });
   },
 
   /* ---------------- 保存 ---------------- */
@@ -628,8 +713,7 @@ Page({
   /** 实际执行保存:saveDish(内部 ensure 原料/组装关联)→ 清理被移除图片 → toast → 返回 */
   async doSave() {
     this.setData({ saving: true, duplicateVisible: false });
-    const { id, name, category, selectedTags, cookTime, difficulty, images, ingredients, steps } =
-      this.data;
+    const { id, name, category, selectedTags, cookTime, difficulty, images, ingredients, steps } = this.data;
     const payload = {
       name: normalizeName(name),
       category,

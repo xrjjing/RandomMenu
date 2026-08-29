@@ -1,0 +1,21 @@
+<view class="page prompt-edit-page">
+  <view class="card section-card">
+    <view class="section-title">{{label}}</view>
+    <view class="ai-note">{{desc}}</view>
+    <t-textarea
+      value="{{value}}"
+      placeholder="{{desc}}"
+      maxlength="{{limit}}"
+      autosize="{{true}}"
+      bind:change="onInput"
+    />
+    <view class="char-count">{{value.length}}/{{limit}}</view>
+  </view>
+
+  <view class="card section-card ops-card">
+    <t-button block theme="primary" loading="{{saving}}" bind:tap="onSave">保存</t-button>
+    <t-button block variant="outline" loading="{{resetting}}" bind:tap="onReset">恢复默认</t-button>
+  </view>
+
+  <t-toast id="t-toast" />
+</view>

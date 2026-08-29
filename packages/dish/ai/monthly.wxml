@@ -1,0 +1,43 @@
+<view class="page monthly-page">
+  <!-- 未开启 AI 生文:空态引导 -->
+  <view wx:if="{{!textEnabled}}" class="empty-wrap">
+    <t-empty description="AI 功能未开启" />
+    <view class="empty-tip">去「更多 › AI 管理」打开 AI 生文后即可生成月报</view>
+  </view>
+
+  <block wx:else>
+    <view class="card">
+      <view class="card-title">{{periodText}} · AI 月报</view>
+      <view wx:if="{{loading}}" class="loading-wrap">
+        <t-loading theme="spinner" size="64rpx" text="正在为你总结本月…" />
+        <view wx:if="{{reportStream}}" class="stream-text">{{reportStream}}▍</view>
+      </view>
+      <view wx:elif="{{error}}" class="error-wrap">
+        <view class="error-text">{{error}}</view>
+        <t-button block theme="primary" bind:tap="onGenerate">重试</t-button>
+      </view>
+      <view wx:else>
+        <view class="report-text">{{reportText}}</view>
+        <t-button block theme="primary" bind:tap="onGenerate">重新生成</t-button>
+      </view>
+    </view>
+
+    <!-- 分享海报:canvas 2d 绘制,导出后保存/预览 -->
+    <view wx:if="{{reportText}}" class="poster-card">
+      <view class="poster-title">分享海报</view>
+      <canvas type="2d" id="posterCanvas" class="poster-canvas" />
+      <view class="poster-note">生成的是本地绘制的分享图，不消耗 AI 生图额度</view>
+      <view class="btn-row poster-gen-row">
+        <t-button block theme="light" bind:tap="onDrawPoster">生成海报</t-button>
+        <t-button block theme="primary" loading="{{aiPosterGenerating}}" bind:tap="onAiPosterGenerate">AI 生图海报</t-button>
+      </view>
+      <view wx:if="{{aiPosterError}}" class="ai-poster-error">{{aiPosterError}}</view>
+      <view class="btn-row">
+        <t-button block theme="light" bind:tap="onPreview" disabled="{{!posterReady}}">预览大图</t-button>
+        <t-button block theme="primary" bind:tap="onSavePoster" disabled="{{!posterReady}}">保存到相册</t-button>
+      </view>
+    </view>
+  </block>
+
+  <t-toast id="t-toast" />
+</view>

@@ -11,6 +11,7 @@
     "t-popup": "tdesign-miniprogram/popup/popup",
     "t-search": "tdesign-miniprogram/search/search",
     "t-checkbox": "tdesign-miniprogram/checkbox/checkbox",
+    "t-switch": "tdesign-miniprogram/switch/switch",
     "t-cell": "tdesign-miniprogram/cell/cell",
     "t-textarea": "tdesign-miniprogram/textarea/textarea",
     "t-dialog": "tdesign-miniprogram/dialog/dialog",

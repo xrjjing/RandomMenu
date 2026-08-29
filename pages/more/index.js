@@ -46,6 +46,11 @@ Page({
     wx.navigateTo({ url: '/packages/dish/ai/settings' });
   },
 
+  /** 跳转提示词管理列表页(分包 packages/dish/ai) */
+  onAiPrompts() {
+    wx.navigateTo({ url: '/packages/dish/ai/prompt-list' });
+  },
+
   /** 跳转原料库管理页(分包 packages/ingredient) */
   goIngredient() {
     wx.navigateTo({ url: '/packages/ingredient/index' });

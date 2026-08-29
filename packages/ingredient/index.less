@@ -21,11 +21,38 @@
   margin-bottom: 180rpx;
 }
 
+/* 原生 view 行(替代 t-cell:消除 199 个组件实例的渲染层同步开销):左名/右次数+删除 */
+.ing-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16rpx;
+  padding: 24rpx 8rpx;
+  border-bottom: 1rpx solid #f0f0f0;
+}
+
+/* 末行去分隔线 */
+.ing-row:last-child {
+  border-bottom: none;
+}
+
+/* 行按下态(替代原 t-cell hover) */
+.ing-row-hover {
+  background-color: #f7f7f7;
+}
+
+/* 高亮行(新增已存在时定位 2 秒):浅橙底 */
+.ing-row-highlight {
+  background-color: #fff3e0;
+}
+
 /* 行标题:原料名 + 调料小标签并排 */
 .cell-title {
   display: flex;
   align-items: center;
   gap: 12rpx;
+  flex: 1;
+  min-width: 0;
 }
 
 .cell-name {
@@ -33,8 +60,19 @@
   color: #333;
 }
 
+/* 调料小标签(替代 t-tag,原生节点) */
+.seasoning-tag {
+  flex-shrink: 0;
+  font-size: 20rpx;
+  color: #b8860b;
+  background: #fff7e0;
+  border-radius: 8rpx;
+  padding: 4rpx 12rpx;
+}
+
 /* 行说明:被引用菜品次数 */
 .cell-usage {
+  flex-shrink: 0;
   font-size: 24rpx;
   color: #999;
 }
@@ -46,11 +84,6 @@
   background: #fdecee;
   border-radius: 12rpx;
   padding: 8rpx 20rpx;
-}
-
-/* 高亮行(新增已存在时定位):通过 CSS 变量覆盖 t-cell 根节点背景 */
-.cell-highlight {
-  --td-cell-bg-color: #fff3e0;
 }
 
 /* 弹层输入区:顶部留白,底部留按钮空间 */

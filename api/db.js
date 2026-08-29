@@ -43,19 +43,26 @@ export const DISH_CARD_FIELDS = [
 
 /**
  * 内部:分页拉取集合全量(按 where 条件,默认空条件取全部)。
+ * 可选第三参 opts={ field } 在数据库层做 .field(field) 投影:仅在传入时生效,
+ * 真正减少网络载荷(如 dishes 大字段 steps/ingredients/images 可省掉);
+ * 不传则行为与历史完全一致(拉全字段)。
  * @param {string} collectionName 集合名
  * @param {object} where 查询条件
+ * @param {object} [opts]
+ * @param {object} [opts.field] 数据库投影对象(如 {ingredientNames: true}),不传则全字段
  * @returns {Promise<Array>} 全部文档
  */
-async function fetchAll(collectionName, where = {}) {
+async function fetchAll(collectionName, where = {}, opts = {}) {
   const db = wx.cloud.database();
   let list = [];
   let skip = 0;
   // 家庭量级(数百条),有限循环即可拉完
   for (let page = 0; page < 100; page += 1) {
-    const res = await db
-      .collection(collectionName)
-      .where(where)
+    let query = db.collection(collectionName).where(where);
+    // 数据库层投影(非 JS 端 pickFields):真正减小返回体,加快大集合读取。
+    // 注意:投影子集若进集合缓存会污染缓存单元,调用方须保持在缓存外直查路径使用。
+    if (opts.field) query = query.field(opts.field);
+    const res = await query
       // 分页必须有稳定排序:无 orderBy 时 skip/limit 的窗口不保证连续,
       // 会漏文档(实测多设备/新增文档落在窗口外,列表缺菜且查重却能命中)
       .orderBy('_id', 'asc')
@@ -131,12 +138,15 @@ function markDirty(collectionNames) {
   }
 }
 
-/** 内部:字段投影(JS 层等价数据库 field 投影) */
+/** 内部:字段投影(JS 层等价数据库 field 投影)。
+ *  投影契约:所有投影结果必须保留 _id——落账/详情跳转等都依赖菜品 id,
+ *  调用方即使只按 field:['name'] 裁字段,结果里的 _id 也不能丢。 */
 function pickFields(doc, field) {
   const out = {};
   field.forEach((f) => {
     if (doc[f] !== undefined) out[f] = doc[f];
   });
+  out._id = doc._id;
   return out;
 }
 
@@ -154,12 +164,15 @@ async function redirectDishIngredients(oldName, oldId, newId, newName) {
   for (const dish of dishes) {
     const ingredientIds = (dish.ingredientIds || []).map((x) => (x === oldId ? newId : x));
     const ingredientNames = (dish.ingredientNames || []).map((x) => (x === oldName ? newName : x));
-    await db.collection('dishes').doc(dish._id).update({
-      data: {
-        ingredientIds: _.set(ingredientIds),
-        ingredientNames: _.set(ingredientNames),
-      },
-    });
+    await db
+      .collection('dishes')
+      .doc(dish._id)
+      .update({
+        data: {
+          ingredientIds: _.set(ingredientIds),
+          ingredientNames: _.set(ingredientNames),
+        },
+      });
   }
   return dishes.length;
 }
@@ -174,7 +187,7 @@ async function redirectDishIngredients(oldName, oldId, newId, newName) {
  * @param {boolean} [opts.sync=true] 兼容参数(历史控制写后同步,现在写库统一 markDirty;保留避免改动调用方)
  * @returns {Promise<{_id: string, name: string, isNew: boolean, isSeasoning: boolean}>}
  */
-export async function ensureIngredient(name, isSeasoning, { sync = true } = {}) {
+export async function ensureIngredient(name, isSeasoning, { sync: _sync = true } = {}) {
   const normalized = normalizeName(name);
   const db = wx.cloud.database();
   const col = db.collection('ingredients');
@@ -269,15 +282,18 @@ export async function removeIngredient(id) {
   const _ = db.command;
   const col = db.collection('ingredients');
   const doc = await col.doc(id).get(); // 原料不存在时此处会抛错,由调用方提示
-  const name = doc.data.name;
+  const { name } = doc.data;
   const dishes = await fetchAll('dishes', { ingredientNames: name });
   for (const dish of dishes) {
-    await db.collection('dishes').doc(dish._id).update({
-      data: {
-        ingredientIds: _.set((dish.ingredientIds || []).filter((x) => x !== id)),
-        ingredientNames: _.set((dish.ingredientNames || []).filter((x) => x !== name)),
-      },
-    });
+    await db
+      .collection('dishes')
+      .doc(dish._id)
+      .update({
+        data: {
+          ingredientIds: _.set((dish.ingredientIds || []).filter((x) => x !== id)),
+          ingredientNames: _.set((dish.ingredientNames || []).filter((x) => x !== name)),
+        },
+      });
   }
   await col.doc(id).remove();
   // 写库成功:原料与菜品冗余字段都可能变化,两层缓存一并失效
@@ -290,7 +306,10 @@ export async function removeIngredient(id) {
  * @returns {Promise<Array<{name: string, count: number}>>} 按次数降序
  */
 export async function ingredientUsage() {
-  const dishes = await fetchAll('dishes');
+  // 只投影 ingredientNames(数据库 .field 投影):dishes 文档含 steps/ingredients/images
+  // 大数组,全字段拉取返回体约 1.4MB,是原料库打开慢的根因。
+  // 保持绕过 loadCollection('dishes') 缓存直查——投影子集不能进 dishes 缓存单元。
+  const dishes = await fetchAll('dishes', {}, { field: { ingredientNames: true } });
   const countMap = new Map();
   dishes.forEach((dish) => {
     (dish.ingredientNames || []).forEach((n) => {
@@ -400,7 +419,7 @@ export async function searchDishesByIngredients(ingredientNames, { mode = 'parti
  */
 function normalizeDishSteps(raw) {
   if (!raw) return raw;
-  let steps = raw.steps;
+  let { steps } = raw;
   // 历史脏数据:add 分支误写入的 command 对象形状 {$set:[步骤...]}
   if (steps && !Array.isArray(steps) && Array.isArray(steps.$set)) steps = steps.$set;
   if (!Array.isArray(steps)) steps = [];
@@ -442,7 +461,7 @@ export async function getDish(id) {
  * @param {boolean} [opts.skipSync=false] 兼容参数(历史控制写后逐条重拉,现在写库统一 markDirty;保留避免改动调用方)
  * @returns {Promise<object>} 保存后的文档
  */
-export async function saveDish(dish, { skipSync = false } = {}) {
+export async function saveDish(dish, { skipSync: _skipSync = false } = {}) {
   const db = wx.cloud.database();
   const _ = db.command;
   // 1. 原料逐个 ensure,组装关联字段与用量明细
@@ -521,9 +540,7 @@ export async function removeDish(id) {
   const builtinMap = await loadBuiltinImageMap();
   const builtinValues = builtinMap ? Object.values(builtinMap) : [];
   // 只清理用户上传的云图 fileID(非云路径 + 内置公共图一律过滤,避免 deleteFile 收到非法 fileID 报错)
-  const images = (dish.images || [])
-    .filter(isCloudFileId)
-    .filter((id) => !builtinValues.includes(id));
+  const images = (dish.images || []).filter(isCloudFileId).filter((id) => !builtinValues.includes(id));
   if (images.length > 0) {
     await wx.cloud.deleteFile({ fileList: images });
   }
@@ -568,12 +585,15 @@ export async function getDishByName(name) {
  * @param {boolean} [opts.skipSync=false] 兼容参数(历史控制写后同步,现在写库统一 markDirty;保留避免改动调用方)
  * @returns {Promise<void>}
  */
-export async function updateDishImages(id, images, { skipSync = false } = {}) {
+export async function updateDishImages(id, images, { skipSync: _skipSync = false } = {}) {
   const db = wx.cloud.database();
   const _ = db.command;
-  await db.collection('dishes').doc(id).update({
-    data: { images: _.set(images || []) },
-  });
+  await db
+    .collection('dishes')
+    .doc(id)
+    .update({
+      data: { images: _.set(images || []) },
+    });
   markDirty(['dishes']);
 }
 
@@ -663,9 +683,7 @@ export function groupByDate(records, dates) {
   (records || []).forEach((record) => {
     if (groups[record.date]) groups[record.date].push(record);
   });
-  Object.values(groups).forEach((group) =>
-    group.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)),
-  );
+  Object.values(groups).forEach((group) => group.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)));
   return groups;
 }
 

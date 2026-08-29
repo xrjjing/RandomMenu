@@ -2,7 +2,7 @@
  * test/ai-recipe.test.js
  * F28 AI 写做法验收(node --test):packages/dish/ai/recipe.js + packages/dish/edit.js。
  * 覆盖:生成成功收口 {ok,text} / 接口失败收口 {ok,error}(不 throw)/ 开关关 / 空内容 /
- *      编辑页已有内容时确认弹窗路径(源码提取 applyRecipeDraft,confirm 才覆盖)。
+ *      编辑页做法草稿静默覆盖路径(源码提取 applyRecipeDraft,不再二次确认)。
  * 运行:node --test;recipe.js mock 与 test/ai-text.test.js 同款;edit.js 用 shuffle.test.js
  *      同款源码提取手法(Page 依赖 wx 运行时无法直接 import)。
  */
@@ -94,7 +94,7 @@ test('generateRecipeDraft:空内容 → {ok:false}', async () => {
   assert.match(res.error, /未返回内容/);
 });
 
-/* ---------------- 编辑页 applyRecipeDraft:已有内容确认路径 ---------------- */
+/* ---------------- 编辑页 applyRecipeDraft:静默覆盖路径 ---------------- */
 
 // packages/dish/edit.js 是 Page 文件(依赖 wx 运行时),用源码提取 + 沙箱求值
 const editSrc = fs.readFileSync(path.join(__dirname, '../packages/dish/edit.js'), 'utf8');
@@ -124,7 +124,7 @@ function setupPage(steps) {
   return { page, state };
 }
 
-test('applyRecipeDraft:做法为空 → 直接填入,不弹确认', () => {
+test('applyRecipeDraft:做法为空 → 直接填入(静默覆盖,不弹确认)', () => {
   const { page, state } = setupPage([{ id: 0, text: '' }]);
   applyRecipeDraft.call(page, '备料:鸡蛋\n步骤1.打散');
   assert.equal(state.modalContent, null, '不应弹确认');
@@ -133,18 +133,13 @@ test('applyRecipeDraft:做法为空 → 直接填入,不弹确认', () => {
   assert.equal(patch.steps[0].text, '备料:鸡蛋');
 });
 
-test('applyRecipeDraft:已有内容 → 弹确认;confirm 才覆盖(回调触发)', () => {
+test('applyRecipeDraft:已有内容 → 静默覆盖,不再弹第二次确认', () => {
   const { page, state } = setupPage([{ id: 0, text: '已有做法' }]);
   applyRecipeDraft.call(page, '备料:鸡蛋\n步骤1.打散');
-  assert.match(state.modalContent, /覆盖当前做法/);
-  // 用户取消:不做任何 setData
-  state.modalSuccess({ confirm: false });
-  assert.equal(state.setDataCalls.length, 0);
-  // 用户确认:覆盖填入
-  state.modalSuccess({ confirm: true });
+  assert.equal(state.modalContent, null, 'result 态已确认,不应再弹二次确认');
   const patch = state.setDataCalls.find((p) => p.steps);
   assert.equal(patch.steps.length, 2);
-  assert.equal(patch.steps[1].text, '步骤1.打散');
+  assert.equal(patch.steps[0].text, '备料:鸡蛋');
 });
 
 test('applyRecipeDraft:空文本 → 拦截并 toast,不写 setData', () => {

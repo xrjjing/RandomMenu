@@ -1,17 +1,16 @@
 /**
- * packages/ai/settings.js
- * F26/F27 AI 设置页(分包 packages/ai,自家庭管理页迁入):
+ * packages/dish/ai/settings.js
+ * F26/F27/F28 AI 管理页(分包 packages/dish/ai,自家庭管理页迁入):
  * - 守卫:onLoad → ensureIdentity → 非 admin toast 后 navigateBack
  * - AI 生图 / 生文开关(即时保存,setAiConfig 整组覆盖防误关另一开关)
  * - AI 报菜员入口(textEnabled 时显示,跳 summary 页)
  * - AI 补图弹层(imageEnabled 时显示):无图菜列表逐个生成/采用,一次会话最多 10 张
- * - F28 提示词区块:生图词根/推荐/小结/做法 四个提示词,单套可编辑 + 逐项恢复默认
- * 逻辑原样迁自 packages/family/index.js,方法名/数据字段保持一致。
+ * 提示词管理已拆分为独立页(prompts 列表 + prompts-edit 详情),见同目录。
  */
 import useToastBehavior from '../../../behaviors/useToast.js';
 import { ensureIdentity, isFamilyAdmin } from '../../../api/identity.js';
 import { getAiConfig, setAiConfig } from './config.js';
-import { DEFAULT_PROMPTS, PROMPT_LIMITS } from './prompts.js';
+import { fetchUsage, summarizeUsage } from './usage.js';
 import { fetchAllDishes } from '../../../api/db.js';
 import { generateDishImage, attachImageToDish } from './api.js';
 import { resolveImgUrls } from '../../../utils/imgUrl.js';
@@ -31,16 +30,9 @@ Page({
     // AI 补图弹层
     repairPopupVisible: false,
     repairItems: [], // 无图菜列表 [{_id, name, genLoading, previewUrl, previewFileId, error}]
-    // F28 提示词管理(单套可编辑):四文本域 + 逐项恢复默认 + 底部保存
-    prompts: { ...DEFAULT_PROMPTS }, // 当前编辑中的提示词(init 时从 config 拉取)
-    promptLimits: PROMPT_LIMITS, // 供 wxml maxlength
-    promptSaving: false, // 保存中(防重复)
-    promptFields: [
-      { key: 'imageStyle', label: '生图风格词根', placeholder: '追加在生图描述后,保证真实菜品照片' },
-      { key: 'suggest', label: 'AI 推荐', placeholder: '定菜助手的 system 提示词' },
-      { key: 'summary', label: 'AI 小结', placeholder: '报菜员的 system 提示词' },
-      { key: 'recipe', label: 'AI 写做法', placeholder: '做法草稿的 system 提示词' },
-    ],
+    // AI 用量面板(F30 #9:生文 token 由 text.js/usage.js 累计,生图张数由 ai-image 云函数累计)
+    usage: null, // summarizeUsage 结果 {monthKey, month:{...}, total:{...}},null=加载中/无数据
+    usageLoading: false, // 用量刷新中(防重复)
   },
 
   onLoad() {
@@ -57,6 +49,7 @@ Page({
         return;
       }
       this.loadAiConfig();
+      this.loadUsage();
     } catch (err) {
       console.error('身份加载失败', err);
       this.onShowToast('#t-toast', '身份加载失败，请稍后再试');
@@ -73,7 +66,6 @@ Page({
       this.setData({
         aiImageEnabled: cfg.imageEnabled,
         aiTextEnabled: cfg.textEnabled,
-        prompts: cfg.prompts, // F28:已归一化,缺失字段已被内置默认填充
       });
       // 自愈:历史数据可能存在「子开关开但总开关关」的死锁,按派生语义重写一次
       const derived = cfg.imageEnabled || cfg.textEnabled;
@@ -83,6 +75,27 @@ Page({
     } catch (err) {
       console.error('AI 配置加载失败', err);
     }
+  },
+
+  /* ---------------- AI 用量面板(F30 #9) ---------------- */
+
+  /** 读取 ai_usage 文档并汇总本月/累计(生文 token 来自 text.js 静默上报,生图张数来自云函数) */
+  async loadUsage() {
+    if (this.data.usageLoading) return;
+    this.setData({ usageLoading: true });
+    try {
+      const doc = await fetchUsage(); // 内部已收口,失败返回 null → 面板显示全 0
+      this.setData({ usage: summarizeUsage(doc) });
+    } catch (err) {
+      console.error('AI 用量加载失败', err);
+    } finally {
+      this.setData({ usageLoading: false });
+    }
+  },
+
+  /** 手动刷新用量 */
+  onUsageRefresh() {
+    this.loadUsage();
   },
 
   /** 切换开关:先读当前值再合并写全三字段(setAiConfig 整组覆盖,防误关另一开关) */
@@ -100,7 +113,9 @@ Page({
     try {
       const cur = await getAiConfig();
       const next = { ...cur, [field]: value };
-      await setAiConfig(next);
+      // 剥离 prompts:开关切换只写开关三字段,避免把归一化后的全量提示词固化进库
+      // (库里缺字段本应跟随代码内置默认升级,一旦全量写死就失去该升级通道)
+      await setAiConfig({ imageEnabled: next.imageEnabled, textEnabled: next.textEnabled });
       this.setData({
         [switchingKey]: false,
         aiImageEnabled: next.imageEnabled,
@@ -116,43 +131,7 @@ Page({
 
   /** 跳转 AI 报菜员小结页(仅 textEnabled 时入口可见) */
   onSummaryTap() {
-    wx.navigateTo({ url: '/packages/ai/summary' });
-  },
-
-  /* ---------------- 提示词管理(F28,单套可编辑) ---------------- */
-
-  /** 提示词文本域输入:data-key 区分字段 */
-  onPromptInput(e) {
-    const { key } = e.currentTarget.dataset;
-    this.setData({ [`prompts.${key}`]: e.detail.value });
-  },
-
-  /** 恢复默认:把该字段填回内置默认值(仅改编辑态,点保存才落库) */
-  onPromptReset(e) {
-    const { key } = e.currentTarget.dataset;
-    this.setData({ [`prompts.${key}`]: DEFAULT_PROMPTS[key] });
-  },
-
-  /** 保存提示词:非空校验(空串回退由读取侧兼底,但保存时拦截更直观)→ setAiConfig(写后缓存已失效) */
-  async onSavePrompts() {
-    if (this.data.promptSaving) return;
-    const { prompts } = this.data;
-    const emptyKey = Object.keys(prompts).find((key) => !String(prompts[key] || '').trim());
-    if (emptyKey) {
-      this.onShowToast('#t-toast', '提示词不能为空');
-      return;
-    }
-    this.setData({ promptSaving: true });
-    try {
-      const cfg = await setAiConfig({ prompts });
-      // 以归一化后的值回填(去首尾空白),缓存已被 setAiConfig 清空
-      this.setData({ promptSaving: false, prompts: cfg.prompts });
-      this.onShowToast('#t-toast', '提示词已保存');
-    } catch (err) {
-      console.error('提示词保存失败', err);
-      this.setData({ promptSaving: false });
-      this.onShowToast('#t-toast', err.message || '保存失败，请重试');
-    }
+    wx.navigateTo({ url: '/packages/dish/ai/summary' });
   },
 
   /* ---------------- AI 补图 ---------------- */

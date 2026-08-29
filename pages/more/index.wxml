@@ -1,6 +1,30 @@
 <view class="page more-page">
-  <!-- 功能入口列表 -->
+  <!-- 智能功能入口(仅家庭管理员可见) -->
   <view class="card more-card">
+    <view class="section-title">智能</view>
+    <t-cell-group>
+      <t-cell
+        wx:if="{{isAdmin}}"
+        title="AI 管理"
+        note="生图 · 生文 · 补图"
+        arrow="{{true}}"
+        hover="{{true}}"
+        bind:click="onAiSettings"
+      />
+      <t-cell
+        wx:if="{{isAdmin}}"
+        title="提示词管理"
+        note="各 AI 功能的提示词"
+        arrow="{{true}}"
+        hover="{{true}}"
+        bind:click="onAiPrompts"
+      />
+    </t-cell-group>
+  </view>
+
+  <!-- 数据与管理入口 -->
+  <view class="card more-card">
+    <view class="section-title">管理</view>
     <t-cell-group>
       <t-cell
         title="原料库"
@@ -10,21 +34,6 @@
         bind:click="goIngredient"
       />
       <t-cell
-        title="初始化内置菜谱"
-        note="导入系统预置的家常菜与饮品 · 非必要不使用"
-        arrow="{{true}}"
-        hover="{{true}}"
-        bind:click="goImportBuiltin"
-      />
-      <t-cell
-        title="上传内置图到云"
-        note="把内置菜图片存到云端 · 非必要不使用"
-        arrow="{{true}}"
-        hover="{{true}}"
-        bind:click="goUploadBuiltinImages"
-      />
-      <!-- 管理入口仅家庭管理员可见可用 -->
-      <t-cell
         wx:if="{{isAdmin}}"
         title="家庭与成员管理"
         note="家庭别名 · 成员归属 · 未分配池"
@@ -32,16 +41,8 @@
         hover="{{true}}"
         bind:click="goFamily"
       />
-      <!-- AI 设置入口仅家庭管理员可见 -->
-      <t-cell
-        wx:if="{{isAdmin}}"
-        title="AI 设置"
-        note="生图 · 生文开关"
-        arrow="{{true}}"
-        hover="{{true}}"
-        bind:click="onAiSettings"
-      />
     </t-cell-group>
   </view>
+
   <t-toast id="t-toast" />
 </view>

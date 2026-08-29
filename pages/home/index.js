@@ -109,7 +109,11 @@ Page({
     fridgeSkeletonRowCol: [
       // 冰箱 chips 区骨架:标题 + 一排圆角块
       [{ width: '30%', height: '32rpx' }],
-      [{ width: '160rpx', height: '56rpx' }, { width: '160rpx', height: '56rpx' }, { width: '160rpx', height: '56rpx' }],
+      [
+        { width: '160rpx', height: '56rpx' },
+        { width: '160rpx', height: '56rpx' },
+        { width: '160rpx', height: '56rpx' },
+      ],
     ],
     // F25 今明已定三分组(空组整组不渲染,页面按 group.rows.length 判断)
     todayGroups: [],
@@ -153,6 +157,7 @@ Page({
     candidates: [], // 转盘候选(当前匹配结果 / 全部菜品)
     nicknamePopupVisible: false, // 昵称引导弹层(未注册成员首次进入时弹出)
     nicknameInput: '', // 昵称输入值
+    briefCard: null, // AI 今日简报卡 {date, text}(当天有效,由分包 brief 页生成后写 storage)
   },
 
   onLoad() {
@@ -168,12 +173,27 @@ Page({
   },
 
   onShow() {
-    // AI 推荐返回:suggest 页写的 aiPick 标记,读取后清除并提示(不强制自动落账)
+    // AI 推荐返回:suggest 页写的 aiPick 标记,读取后清除。
+    // F30 #4:新格式为 {name, id},直接复用「就做这道?」落账弹层三选落账;
+    // 旧格式为纯字符串(历史版本),维持现状 toast 提示。
     const aiPick = wx.getStorageSync('aiPick');
     if (aiPick) {
       wx.removeStorageSync('aiPick');
-      this.onShowToast('#t-toast', `AI 推荐:${aiPick}`);
+      if (aiPick && typeof aiPick === 'object' && aiPick.id) {
+        // 对象分支严禁走 `AI 推荐:${aiPick}` 模板串(会渲染成 [object Object]),直接弹落账确认
+        this.setData({
+          pendingDishId: aiPick.id,
+          pendingDishText: `「${aiPick.name}」`,
+          pendingDate: 'today',
+          dishDialogVisible: true,
+        });
+      } else if (typeof aiPick === 'string') {
+        this.onShowToast('#t-toast', `AI 推荐:${aiPick}`);
+      }
     }
+    // AI 今日简报:brie 页生成后写 storage 'aiBrief',首页只回显当天简报(主包零逻辑,仅展示)
+    const brief = wx.getStorageSync('aiBrief');
+    this.setData({ briefCard: brief && brief.date === dateKey() ? brief : null });
     // 快照脏时重拉(冷启动 / tab 切回 / 编辑页返回),保证匹配用最新菜品数据
     if (this.dishesSnapshotDirty) {
       this.refreshDishesSnapshot();
@@ -424,8 +444,7 @@ Page({
       const selected = this.data.selectedNames;
       const chips = [];
       ingredients.forEach((item) => {
-        const isSeasoning =
-          item.isSeasoning != null ? item.isSeasoning : SEASONING_SET.has(item.name);
+        const isSeasoning = item.isSeasoning != null ? item.isSeasoning : SEASONING_SET.has(item.name);
         if (isSeasoning) return;
         chips.push({ name: item.name, active: selected.includes(item.name) });
       });
@@ -467,7 +486,7 @@ Page({
   onCategoryTap(e) {
     const value = e.currentTarget.dataset.value || ''; // 全部 → '' / 餐食 → meal / 饮品 → drink
     const { matchSearched, matchCategory } = this.data;
-    const searched = matchSearched && matchCategory === value ? false : true;
+    const searched = !(matchSearched && matchCategory === value);
     this.setData({
       matchCategory: searched ? value : '',
       matchSearched: searched,
@@ -561,9 +580,7 @@ Page({
         wheelDisabled = res.total === 0; // 先按该分类是否有菜判断,空时再探测全库
         if (res.total === 0) {
           emptyText =
-            this.data.matchCategory === ''
-              ? '还没有菜谱，去「更多」页初始化内置菜谱吧'
-              : '这个分类还没有菜谱';
+            this.data.matchCategory === '' ? '还没有菜谱，去「更多」页初始化内置菜谱吧' : '这个分类还没有菜谱';
           if (this.data.matchCategory === '') {
             noDishes = true;
           } else {
@@ -614,14 +631,19 @@ Page({
       let score = '';
       if (withScore) {
         // partial 模式 matchScore(0-1)取整百分比;complete 模式全部完全匹配显示 100%
-        const raw = this.data.completeMode ? 1 : dish.matchScore != null ? dish.matchScore : 0;
+        let raw = 0;
+        if (this.data.completeMode) raw = 1;
+        else if (dish.matchScore != null) raw = dish.matchScore;
         score = `${Math.round(raw * 100)}%`;
       }
+      // 无封面时分类 emoji 占位(饮品🥤 / 其他🍜)
+      let emoji = '';
+      if (!hasCover) emoji = dish.category === 'drink' ? '🥤' : '🍜';
       return {
         _id: dish._id,
         name: dish.name,
         cover,
-        emoji: hasCover ? '' : dish.category === 'drink' ? '🥤' : '🍜',
+        emoji,
         ingredientTags: names.slice(0, 4),
         extraCount: names.length > 4 ? names.length - 4 : 0,
         cookTime: dish.cookTime || '',
@@ -754,6 +776,11 @@ Page({
     wx.navigateTo({ url: '/packages/dish/ai/suggest' });
   },
 
+  /** AI 今日简报入口 / 卡片点击:跳转分包 packages/dish/ai/brief(主包零 import 分包,仅页面跳转) */
+  onAiBrief() {
+    wx.navigateTo({ url: '/packages/dish/ai/brief' });
+  },
+
   /**
    * 打开转盘弹层:组装候选 = 当前匹配结果(未选原料时 = 全部菜品)。
    * 已选原料时 matchList 即内存快照匹配的全量结果;
@@ -780,17 +807,16 @@ Page({
     this.setData({ candidates, wheelVisible: true });
   },
 
-  /** 循环翻页拉取全部菜品(家庭量级有限循环即可) */
+  /** 递归翻页收集全部菜品(转盘候选只需 _id + name;page 上限 100 防环) */
   async fetchAllDishesForWheel() {
-    const list = [];
-    let page = 1;
-    for (let i = 0; i < 100; i += 1) {
-      const res = await listDishes({ page, pageSize: PAGE_SIZE, field: ['name'] }); // 转盘候选只需 _id + name
-      list.push(...res.list);
-      if (!res.hasMore) break;
-      page += 1;
-    }
-    return list;
+    const collect = async (page, acc) => {
+      if (page > 100) return acc;
+      const res = await listDishes({ page, pageSize: PAGE_SIZE, field: ['name', '_id'] });
+      const next = acc.concat(res.list);
+      if (!res.hasMore) return next;
+      return collect(page + 1, next);
+    };
+    return collect(1, []);
   },
 
   /** 弹层关闭(点遮罩/关闭按钮):重置旋转状态并回写 wheelVisible,避免状态残留。
@@ -800,14 +826,16 @@ Page({
     const detail = e.detail || {};
     const visible = typeof detail === 'boolean' ? detail : detail.visible;
     if (visible === false) {
-      this.setData({ wheelVisible: false, wheelSpinning: false });
+      // 同步清空候选:转盘关闭后首页栈内不再滞留全量菜品列表(候选数据恒定存在,
+      // 避免其被后续任何 setData 同步链路带出);重开转盘时 openWheel 会重新拉取
+      this.setData({ wheelVisible: false, wheelSpinning: false, candidates: [] });
     }
   },
 
   /** 顶部标题栏关闭按钮:与遮罩关闭等价,统一回写 wheelVisible 状态;
    *  结果弹窗不随转盘关闭(转盘停转后才弹,与转盘显隐解耦) */
   closeWheel() {
-    this.setData({ wheelVisible: false, wheelSpinning: false });
+    this.setData({ wheelVisible: false, wheelSpinning: false, candidates: [] });
   },
 
   /** 「开始旋转」:调组件 spin();旋转状态由组件的 spinstart/spinend 事件维护 */
@@ -834,7 +862,9 @@ Page({
       pendingDate: 'today', // F25 结果弹层三选每次重置为今天
     });
     setTimeout(() => {
-      this.setData({ wheelVisible: false, wheelResultVisible: true });
+      // 收转盘同时清空候选(与 onWheelVisibleChange/closeWheel 同理,栈内不滞留全量候选);
+      // 结果弹窗用 wheelResultItem 已保存的选中项,不再依赖 candidates
+      this.setData({ wheelVisible: false, wheelResultVisible: true, candidates: [] });
     }, 800);
   },
 

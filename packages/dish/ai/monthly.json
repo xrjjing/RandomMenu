@@ -1,10 +1,7 @@
 {
-  "navigationBarTitleText": "原料库",
+  "navigationBarTitleText": "AI 月报",
   "usingComponents": {
-    "t-search": "tdesign-miniprogram/search/search",
     "t-button": "tdesign-miniprogram/button/button",
-    "t-dialog": "tdesign-miniprogram/dialog/dialog",
-    "t-input": "tdesign-miniprogram/input/input",
     "t-empty": "tdesign-miniprogram/empty/empty",
     "t-loading": "tdesign-miniprogram/loading/loading",
     "t-toast": "tdesign-miniprogram/toast/toast"

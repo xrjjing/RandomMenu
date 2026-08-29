@@ -20,35 +20,31 @@
     <t-empty description="{{keyword ? '没有找到相关原料' : '还没有原料，点击下方按钮添加'}}" />
   </view>
 
-  <!-- 原料列表 -->
+  <!-- 原料列表:原生 view 行(不用 t-cell:199 个组件实例挂载时渲染层同步约 1.4MB,
+       是 setData 1414KB 警告与工具内存爆炸崩溃的根因;原生节点无组件开销) -->
   <view wx:else class="card list-card">
-    <t-cell-group>
-      <t-cell
-        wx:for="{{list}}"
-        wx:key="_id"
-        hover="{{true}}"
-        t-class="{{item.highlight ? 'cell-highlight' : ''}}"
-        bind:click="onRowTap"
+    <view
+      wx:for="{{list}}"
+      wx:key="_id"
+      class="ing-row {{item.highlight ? 'ing-row-highlight' : ''}}"
+      hover-class="ing-row-hover"
+      bind:tap="onRowTap"
+      data-id="{{item._id}}"
+      data-name="{{item.name}}"
+    >
+      <!-- 左:原料名 + 调料小标签;右:使用次数 + 删除按钮 -->
+      <view class="cell-title">
+        <text class="cell-name">{{item.name}}</text>
+        <text wx:if="{{item.isSeasoning}}" class="seasoning-tag">调料</text>
+      </view>
+      <text class="cell-usage">{{item.usage}} 道菜使用</text>
+      <view
+        class="cell-delete"
+        catch:tap="onDeleteTap"
         data-id="{{item._id}}"
-        data-name="{{item.name}}"
-      >
-        <!-- 标题:原料名 + 调料小标签 -->
-        <view slot="title" class="cell-title">
-          <text class="cell-name">{{item.name}}</text>
-          <t-tag wx:if="{{item.isSeasoning}}" theme="warning" variant="light" size="small">调料</t-tag>
-        </view>
-        <!-- 说明:被引用菜品次数 -->
-        <view slot="note" class="cell-usage">{{item.usage}} 道菜使用</view>
-        <!-- 右侧删除按钮 -->
-        <view
-          slot="right-icon"
-          class="cell-delete"
-          catch:tap="onDeleteTap"
-          data-id="{{item._id}}"
-          data-usage="{{item.usage}}"
-        >删除</view>
-      </t-cell>
-    </t-cell-group>
+        data-usage="{{item.usage}}"
+      >删除</view>
+    </view>
   </view>
 
   <!-- 底部主按钮:新增原料 -->

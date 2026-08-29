@@ -19,26 +19,33 @@
     </t-cell-group>
   </view>
 
-  <!-- F28 提示词区块:单套可编辑,保存实时生效;逐项恢复默认 -->
+  <!-- F30 #9 AI 用量面板:生文 token(静默上报)/ 生图张数(云函数计数),本月 + 累计 -->
   <view class="card section-card">
-    <view class="section-title">提示词</view>
-    <view class="ai-note">各 AI 功能使用的提示词,保存后实时生效;留空保存会被拦截,恢复默认可一键回退</view>
-    <view class="prompt-field" wx:for="{{promptFields}}" wx:key="key" wx:for-item="field">
-      <view class="prompt-field-head">
-        <text class="prompt-field-label">{{field.label}}</text>
-        <text class="prompt-reset" data-key="{{field.key}}" bind:tap="onPromptReset">恢复默认</text>
+    <view class="section-title">用量</view>
+    <view class="ai-note">本月按自然月统计；生文 Token 由系统静默上报，生图按张计数</view>
+    <view wx:if="{{usageLoading && !usage}}" class="ai-note">加载中…</view>
+    <block wx:elif="{{usage}}">
+      <view class="usage-block">
+        <view class="usage-block-title">本月 · {{usage.monthKey}}</view>
+        <view class="usage-row">
+          <text class="usage-val">生文 {{usage.month.textCalls}} 次</text>
+          <text class="usage-val">生图 {{usage.month.imageCalls}} 张</text>
+          <text class="usage-val">Token {{usage.month.totalTokens}}</text>
+        </view>
       </view>
-      <t-textarea
-        value="{{prompts[field.key]}}"
-        placeholder="{{field.placeholder}}"
-        maxlength="{{promptLimits[field.key]}}"
-        autosize
-        data-key="{{field.key}}"
-        bind:change="onPromptInput"
-      />
-    </view>
-    <t-button block theme="primary" loading="{{promptSaving}}" bind:tap="onSavePrompts">保存提示词</t-button>
+      <view class="usage-block">
+        <view class="usage-block-title">累计</view>
+        <view class="usage-row">
+          <text class="usage-val">生文 {{usage.total.textCalls}} 次</text>
+          <text class="usage-val">生图 {{usage.total.imageCalls}} 张</text>
+          <text class="usage-val">Token {{usage.total.totalTokens}}</text>
+        </view>
+      </view>
+    </block>
+    <t-button size="small" variant="outline" loading="{{usageLoading}}" bind:tap="onUsageRefresh">刷新</t-button>
   </view>
+
+  <!-- F28 提示词已拆分为独立「提示词管理」页,本页仅保留开关 / 报菜员入口 / 补图 -->
 
   <!-- AI 补图弹层(底部):无图菜列表,逐个生成/采用,一次弹层会话最多 10 张 -->
   <t-popup visible="{{repairPopupVisible}}" placement="bottom" bind:visible-change="onRepairPopupVisibleChange">

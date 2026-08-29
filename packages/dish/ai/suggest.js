@@ -1,9 +1,10 @@
 /**
  * packages/ai/suggest.js
- * F27 AI 定菜助手页(分包 packages/ai,首页「✨AI 推荐」入口跳入):
+ * F27 AI 定菜助手页(分包 packages/ai,首页「✨AI 推荐」入口跳入);F30 升级为自然语言找菜:
  * - 进入检查 getAiConfig().textEnabled,关闭则显示空态(主包入口零逻辑直接跳转)
- * - 候选 = 全量菜名;排除近 3 天做过的(近 14 天窗口聚合取近 3 天段做排除)
- * - 生成:generateText 输出严格 JSON {name, reason},extractJson 解析
+ * - 候选 = 全量菜(含原料/标签);排除近 3 天做过的(近 14 天窗口聚合取近 3 天段做排除)
+ * - 用户可输入想法(手头原料/口味/忌口等),拼入 user 报文一起交给模型
+ * - 生成:generateText 输出严格 JSON {name, reason},extractJson 解析;name 必须在候选内
  * - 「就吃这个」:wx.setStorageSync('aiPick', name) 后返回,首页 onShow 读取(不强制自动落账)
  * 注意:数据库操作走主包 api/db.js 与 api/identity.js 封装(分包可引主包,反向禁止)。
  */
@@ -34,8 +35,10 @@ Page({
 
   data: {
     textEnabled: false, // AI 生文开关(关闭显示空态)
+    query: '', // 用户想法输入(手头原料/口味/忌口等,可空)
     loading: false, // 生成中
     pickName: '', // 推荐菜名
+    pickId: '', // 推荐菜 _id(首页落账弹层用,与 pickName 配对)
     pickReason: '', // 推荐理由
     error: '', // 失败文案
   },
@@ -58,7 +61,7 @@ Page({
   /** 组装候选与排除数据并发起生文;解析失败/输出不在候选内降级提示重试 */
   async suggest() {
     if (this.data.loading) return;
-    this.setData({ loading: true, error: '', pickName: '', pickReason: '' });
+    this.setData({ loading: true, error: '', pickName: '', pickId: '', pickReason: '' });
     try {
       const { member } = await ensureIdentity();
       const familyId = member ? member.familyId : '';
@@ -74,23 +77,29 @@ Page({
         }),
       ]);
       const recentNames = new Set(recent.byDish.map((d) => d.name));
-      const plannedNames = new Set(
-        []
-          .concat(upcoming.today || [], upcoming.tomorrow || [])
-          .map((r) => r.dishName),
-      );
+      const plannedNames = new Set([].concat(upcoming.today || [], upcoming.tomorrow || []).map((r) => r.dishName));
+      // 候选对象带原料与标签,让模型基于更丰富上下文挑选;仍洗牌+截断消除头部偏置
       const candidates = shuffleCandidates(
         dishes
-          .map((d) => d.name)
-          .filter((name) => !recentNames.has(name) && !plannedNames.has(name)),
+          .filter((d) => !recentNames.has(d.name) && !plannedNames.has(d.name))
+          .map((d) => ({
+            id: d._id,
+            name: d.name,
+            ingredients: d.ingredientNames || [],
+            tags: d.tags || [],
+          })),
+        40,
       );
       if (candidates.length === 0) {
         this.setData({ loading: false, error: '候选菜为空(都做过或已定),先添加几道新菜吧' });
         return;
       }
+      const candidateNames = candidates.map((c) => c.name);
+      const query = String(this.data.query || '').trim();
       const dataText = JSON.stringify({
         候选列表: candidates,
         今明已定: Array.from(plannedNames),
+        我的想法: query || '(无)',
       });
       const cfg = await getAiConfig(); // 60s 内存缓存,重复读开销极低
       const text = await generateText([
@@ -99,13 +108,16 @@ Page({
       ]);
       const parsed = extractJson(text);
       const name = parsed && typeof parsed.name === 'string' ? parsed.name : '';
-      if (!name || !candidates.includes(name)) {
+      if (!name || !candidateNames.includes(name)) {
         this.setData({ loading: false, error: 'AI 没给出有效推荐，请重试' });
         return;
       }
+      // 从候选里取回 _id:首页落账弹层需要 dish id,仅存菜名无法 addCookRecord
+      const picked = candidates.find((c) => c.name === name);
       this.setData({
         loading: false,
         pickName: name,
+        pickId: picked ? picked.id : '',
         pickReason: typeof parsed.reason === 'string' ? parsed.reason : '',
       });
     } catch (err) {
@@ -115,16 +127,22 @@ Page({
     }
   },
 
+  /** 想法输入(手头原料/口味/忌口等) */
+  onQueryInput(e) {
+    this.setData({ query: e.detail.value });
+  },
+
   /** 换一个 */
   onSuggest() {
     this.suggest();
   },
 
-  /** 就吃这个:storage 标记后返回首页(首页 onShow 读取并提示,不强制自动落账) */
+  /** 就吃这个:storage 标记(id + name)后返回首页,首页 onShow 读取并弹落账确认
+   *  (F30 #4 修复:旧版只存菜名,首页只能 toast;现在带 _id 走「就做这道?」落账链路) */
   onAccept() {
-    const { pickName } = this.data;
+    const { pickName, pickId } = this.data;
     if (!pickName) return;
-    wx.setStorageSync('aiPick', pickName);
+    wx.setStorageSync('aiPick', { name: pickName, id: pickId });
     wx.navigateBack();
   },
 });

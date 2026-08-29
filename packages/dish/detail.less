@@ -168,3 +168,97 @@
 .action-btn {
   flex: 1;
 }
+
+/* AI 小贴士入口行(卡片式点击区) */
+.tips-entry {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20rpx;
+}
+
+.tips-entry-main {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+}
+
+.tips-entry-emoji {
+  font-size: 34rpx;
+}
+
+.tips-entry-text {
+  font-size: 28rpx;
+  color: #333;
+}
+
+.tips-entry-arrow {
+  color: #bbb;
+  font-size: 36rpx;
+}
+
+/* AI 小贴士弹层 */
+.tips-popup {
+  padding: 32rpx;
+  padding-bottom: calc(32rpx + env(safe-area-inset-bottom));
+  background: #fff;
+  border-radius: 32rpx 32rpx 0 0;
+}
+
+.tips-popup-title {
+  font-size: 32rpx;
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 8rpx;
+}
+
+.tips-popup-dish {
+  font-size: 26rpx;
+  color: #ff8c42;
+  margin-bottom: 20rpx;
+}
+
+.tips-result {
+  margin-top: 20rpx;
+  padding: 20rpx;
+  background: #fff7f0;
+  border-radius: 16rpx;
+  font-size: 28rpx;
+  color: #333;
+  line-height: 1.6;
+}
+
+/* 贴士生成中流式回显区 */
+.tips-stream {
+  margin-top: 16rpx;
+  padding: 16rpx;
+  background: #fff7f0;
+  border-radius: 16rpx;
+  font-size: 26rpx;
+  color: #555;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.tips-error {
+  margin-top: 16rpx;
+  font-size: 26rpx;
+  color: #e34d59;
+}
+
+.tips-popup .ai-tip {
+  margin-top: 16rpx;
+  font-size: 24rpx;
+  color: #999;
+}
+
+.tips-popup-btns {
+  display: flex;
+  gap: 20rpx;
+  margin-top: 24rpx;
+}
+
+.tips-popup-btns .t-button {
+  flex: 1;
+}

@@ -59,7 +59,7 @@ Page({
 
   /** t-tabs 切换:日/月/年切粒度并回到当前期(offset=0),原料榜页签沿用当前粒度与期 */
   onTabChange(e) {
-    const value = e.detail.value;
+    const { value } = e.detail;
     const isGranularity = value === 'day' || value === 'month' || value === 'year';
     const next = { activeTab: value };
     if (isGranularity && value !== this.data.granularity) {
@@ -79,6 +79,11 @@ Page({
     wx.navigateTo({ url: '/packages/dish/ai/summary' });
   },
 
+  /** 跳转 AI 月报/分享海报页(分包 packages/dish/ai;主包零 import 分包,仅页面跳转) */
+  onAiMonthly() {
+    wx.navigateTo({ url: '/packages/dish/ai/monthly' });
+  },
+
   /** 上一期:offset - 1(过去期永远允许) */
   onPrev() {
     this.setData({ offset: this.data.offset - 1 });
@@ -96,7 +101,7 @@ Page({
 
   /** t-tag 切换柱状图 / 饼图(原料榜页签时保持当前选择,切回仍生效) */
   onChartTypeTap(e) {
-    const type = e.currentTarget.dataset.type;
+    const { type } = e.currentTarget.dataset;
     if (type === this.data.chartType) return;
     this.setData({ chartType: type });
   },
@@ -163,9 +168,7 @@ Page({
     const ingredientList = buildIngredientRanking(byIngredient, this.data.includeSeasoning);
     // 空态:原料榜看列表是否为空;图表看柱状(全 0 视为空)或饼图(无数据)是否为空
     const chartEmpty =
-      !barData.length ||
-      barData.every((item) => item.value <= 0) ||
-      (this.data.chartType === 'pie' && !pieData.length);
+      !barData.length || barData.every((item) => item.value <= 0) || (this.data.chartType === 'pie' && !pieData.length);
     this.setData({
       ingredientList,
       empty: this.data.activeTab === 'ingredient' ? ingredientList.length === 0 : chartEmpty,

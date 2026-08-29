@@ -1,0 +1,31 @@
+<view class="page brief-page">
+  <!-- 未开启 AI 生文:空态引导 -->
+  <view wx:if="{{!textEnabled}}" class="empty-wrap">
+    <t-empty description="AI 功能未开启" />
+    <view class="empty-tip">去「更多 › AI 管理」打开 AI 生文后即可生成今日简报</view>
+  </view>
+
+  <block wx:else>
+    <view class="card">
+      <view class="card-title">✨ AI 今日简报</view>
+      <view wx:if="{{loading}}" class="loading-wrap">
+        <t-loading theme="spinner" size="64rpx" />
+        <view wx:if="{{briefStream}}" class="brief-text">{{briefStream}}▍</view>
+      </view>
+      <view wx:elif="{{error}}" class="error-wrap">
+        <view class="error-text">{{error}}</view>
+        <t-button block theme="primary" bind:tap="onRegenerate">重试</t-button>
+      </view>
+      <view wx:else class="brief-body">
+        <view class="brief-text">{{briefText}}</view>
+        <view class="brief-note">生成结果已同步到首页卡片，当天内无需重复生成</view>
+        <t-button block theme="primary" bind:tap="onRegenerate">重新生成</t-button>
+      </view>
+    </view>
+    <view class="back-row">
+      <t-button block theme="light" bind:tap="onBackHome">回首页看卡片</t-button>
+    </view>
+  </block>
+
+  <t-toast id="t-toast" />
+</view>

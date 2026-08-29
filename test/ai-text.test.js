@@ -101,6 +101,53 @@ test('generateText:超时 → TIMEOUT(用 30ms 短超时触发)', async () => {
   );
 });
 
+test('generateText:TIMEOUT 可重试,重试后成功', async () => {
+  let calls = 0;
+  freshEnv({
+    cfgDoc: { aiEnabled: true, textEnabled: true },
+    generateText: () => {
+      calls += 1;
+      if (calls === 1) {
+        // 首次调用挂起 → 30ms 超时;第二次直接成功
+        return new Promise((resolve) => { setTimeout(() => resolve({ choices: [{ message: { content: 'late' } }] }), 300); });
+      }
+      return Promise.resolve({ choices: [{ message: { content: '第二次成功' } }] });
+    },
+  });
+  const out = await text.generateText([{ role: 'user', content: 'x' }], { timeoutMs: 30 });
+  assert.equal(out, '第二次成功');
+  assert.equal(calls, 2, '超时后应重试一次');
+});
+
+test('generateText:MODEL_ERROR 可重试,重试后成功', async () => {
+  let calls = 0;
+  freshEnv({
+    cfgDoc: { aiEnabled: true, textEnabled: true },
+    generateText: () => {
+      calls += 1;
+      // 首次返回空内容 → MODEL_ERROR;第二次成功
+      if (calls === 1) return Promise.resolve({ choices: [{ message: { content: '' } }] });
+      return Promise.resolve({ choices: [{ message: { content: '下次成功' } }] });
+    },
+  });
+  const out = await text.generateText([{ role: 'user', content: 'x' }]);
+  assert.equal(out, '下次成功');
+  assert.equal(calls, 2, 'MODEL_ERROR 应重试一次');
+});
+
+test('generateText:AI_DISABLED 不重试立即抛', async () => {
+  let calls = 0;
+  freshEnv({
+    cfgDoc: { aiEnabled: false, textEnabled: true },
+    generateText: () => { calls += 1; return Promise.resolve({ choices: [{ message: { content: '不应返回' } }] }); },
+  });
+  await assert.rejects(
+    () => text.generateText([{ role: 'user', content: 'x' }]),
+    (err) => err.code === 'AI_DISABLED',
+  );
+  assert.equal(calls, 0, 'AI_DISABLED 应立即抛出,不进重试');
+});
+
 test('extractJson:纯 JSON / ```json 包裹 / 前后缀文本 / 非法输入', () => {
   assert.deepEqual(text.extractJson('{"dish":"红烧肉"}'), { dish: '红烧肉' });
   assert.deepEqual(text.extractJson('```json\n{"a":1}\n```'), { a: 1 });

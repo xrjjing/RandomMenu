@@ -50,6 +50,19 @@
     </block>
   </view>
 
+  <!-- AI 今日简报卡(当天有效,brie 分包页生成后写 storage,首页只用读展示;点击进分包重新生成);
+       首次使用无简报时展示引导卡(D #5:否则入口被 briefCard 为空的 wx:if 完全遮住) -->
+  <view wx:if="{{briefCard}}" class="card brief-card" hover-class="brief-card-hover" bind:tap="onAiBrief">
+    <view class="card-title brief-card-title">✨ AI 今日简报</view>
+    <view class="brief-card-text">{{briefCard.text}}</view>
+    <view class="brief-card-more">查看 / 重新生成 ›</view>
+  </view>
+  <view wx:else class="card brief-card brief-guide" hover-class="brief-card-hover" bind:tap="onAiBrief">
+    <view class="card-title brief-card-title">✨ AI 今日简报</view>
+    <view class="brief-card-text brief-guide-text">生成今天的一句话做饭小结，一眼看懂今天的安排</view>
+    <view class="brief-card-more">立即生成 ›</view>
+  </view>
+
   <!-- 冰箱里有什么:横向 chips 多选原料(排除调料),顶部小搜索防抖 300ms 过滤 -->
   <view class="card fridge-card">
     <view class="card-title">冰箱里有什么</view>

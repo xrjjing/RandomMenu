@@ -21,6 +21,7 @@
       bind:tap="onNext"
     >›</view>
     <view class="ai-summary-entry" hover-class="ai-summary-entry-hover" bind:tap="onAiSummary">✨ AI 小结</view>
+    <view class="ai-summary-entry" hover-class="ai-summary-entry-hover" bind:tap="onAiMonthly">📊 AI 月报</view>
   </view>
 
   <!-- 日 / 月 / 年:图型切换(t-tag)+ 图表 -->

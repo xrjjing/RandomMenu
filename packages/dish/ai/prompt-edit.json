@@ -1,8 +1,8 @@
 {
-  "navigationBarTitleText": "AI 推荐",
+  "navigationBarTitleText": "编辑提示词",
   "usingComponents": {
-    "t-button": "tdesign-miniprogram/button/button",
     "t-textarea": "tdesign-miniprogram/textarea/textarea",
+    "t-button": "tdesign-miniprogram/button/button",
     "t-toast": "tdesign-miniprogram/toast/toast"
   }
 }

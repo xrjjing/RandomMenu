@@ -3,11 +3,21 @@
   <view wx:if="{{!textEnabled}}" class="empty-wrap">
     <view class="empty-emoji">🤖</view>
     <view class="empty-text">AI 功能未开启</view>
-    <view class="empty-tip">管理员可在「更多 › AI 设置」中开启</view>
+    <view class="empty-tip">管理员可在「更多 › AI 管理」中开启</view>
   </view>
 
-  <!-- 已开启:推荐卡片 -->
+  <!-- 已开启:想法输入 + 推荐卡片 -->
   <block wx:else>
+    <view class="card query-card">
+      <view class="query-label">💭 想怎么吃?（可跳过）</view>
+      <t-textarea
+        value="{{query}}"
+        placeholder="说说你的想法：比如冰箱有鸡蛋和番茄、不想吃辣"
+        maxlength="100"
+        autosize
+        bind:change="onQueryInput"
+      />
+    </view>
     <view class="card suggest-card">
       <view class="suggest-title">今晚吃什么？</view>
       <view wx:if="{{loading}}" class="suggest-loading">AI 正在挑菜…</view>

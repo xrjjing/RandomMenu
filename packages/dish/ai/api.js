@@ -21,9 +21,12 @@ import { buildImagePrompt } from './prompts.js';
 export async function generateDishImage(prompt, opts = {}) {
   const cfg = await getAiConfig();
   const fullPrompt = buildImagePrompt(prompt, cfg.prompts.imageStyle);
+  // F30 #8 图生图:传了现有图 fileID 才带 imageFileId(云函数侧转临时 url 走 I2I 模型);不带=纯文生图
+  const data = { prompt: fullPrompt, width: opts.width || 768, height: opts.height || 768 };
+  if (opts.imageFileId) data.imageFileId = opts.imageFileId;
   const res = await wx.cloud.callFunction({
     name: 'ai-image',
-    data: { prompt: fullPrompt, width: opts.width || 768, height: opts.height || 768 },
+    data,
   });
   const result = res.result || {};
   if (result.ok !== true) {
@@ -42,8 +45,11 @@ export async function generateDishImage(prompt, opts = {}) {
 export async function attachImageToDish(dishId, fileID) {
   const db = wx.cloud.database();
   const _ = db.command;
-  const res = await db.collection('dishes').doc(dishId).update({
-    data: { images: _.push([fileID]) },
-  });
+  const res = await db
+    .collection('dishes')
+    .doc(dishId)
+    .update({
+      data: { images: _.push([fileID]) },
+    });
   return (res.stats && res.stats.updated) || 0;
 }

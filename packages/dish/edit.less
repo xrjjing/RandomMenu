@@ -175,6 +175,54 @@
   color: #999;
 }
 
+/* F30 #8 图生图参考开关行 */
+.ai-img2img-row {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  margin-top: 16rpx;
+}
+
+/* F30 #7 写做法流式回显区 */
+.recipe-stream-wrap {
+  margin-top: 16rpx;
+  padding: 16rpx;
+  background: #fff7f0;
+  border-radius: 12rpx;
+}
+
+.recipe-stream-label {
+  font-size: 24rpx;
+  color: #ff8c42;
+  margin-bottom: 8rpx;
+  display: block;
+}
+
+.recipe-stream-text {
+  font-size: 26rpx;
+  line-height: 1.7;
+  color: #444;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+/* 写做法弹层 result 态:全文滚动区 + 覆盖填入/放弃按钮行 */
+.recipe-result-scroll {
+  max-height: 420rpx;
+  margin-top: 16rpx;
+  padding: 16rpx;
+  background: #fff7f0;
+  border-radius: 12rpx;
+}
+
+.recipe-result-text {
+  font-size: 26rpx;
+  line-height: 1.7;
+  color: #444;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
 .ai-popup-btns {
   margin-top: 24rpx;
   display: flex;
@@ -406,4 +454,23 @@
   background: #ff8c42;
   border-color: #ff8c42;
   color: #fff;
+}
+
+/* AI 补全信息行(基础信息卡内) */
+.ai-fill-row {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  margin-top: 20rpx;
+}
+
+.ai-fill-btn {
+  flex-shrink: 0;
+}
+
+.ai-fill-tip {
+  flex: 1;
+  font-size: 24rpx;
+  color: #999;
+  line-height: 1.4;
 }

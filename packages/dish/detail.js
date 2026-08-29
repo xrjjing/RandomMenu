@@ -15,6 +15,8 @@ import { getDish, removeDish } from '../../api/db.js';
 import { SEASONING_SET } from '../../utils/seasonings.js';
 import { orderDishImages } from '../../utils/image.js';
 import { resolveImgUrls } from '../../utils/imgUrl.js';
+import { getAiConfig } from './ai/config.js';
+import { generateDishTips } from './ai/tips.js';
 
 Page({
   behaviors: [useToastBehavior],
@@ -30,10 +32,21 @@ Page({
     deleteReconfirmVisible: false, // 第二层「再次确认」弹窗(防误删,第一层确定后弹出)
     deleteReconfirmBtn: { content: '删除', theme: 'danger' }, // 第二层确认按钮(danger 红色)
     deleting: false, // 删除进行中(防重复提交)
+    textEnabled: false, // AI 生文开关(小贴士入口可见性)
+    tipsPopupVisible: false, // AI 小贴士弹层
+    tipsQuestion: '', // 小贴士问题输入
+    tipsResult: '', // 生成结果
+    tipsError: '', // 生成失败文案
+    tipsGenerating: false, // 生成中(防重复)
+    tipsStream: '', // 贴士生成中流式回显(完成后清空)
   },
 
   onLoad(options) {
     this.setData({ id: options.id || '' });
+    // 小贴士入口开关(失败按 false,不弹错误)
+    getAiConfig()
+      .then((cfg) => this.setData({ textEnabled: cfg.textEnabled }))
+      .catch(() => {});
     this.needsRefresh = false; // 从编辑页返回后是否需要静默刷新
     this.loadDish();
   },
@@ -74,6 +87,10 @@ Page({
         images,
         emoji: dish.category === 'drink' ? '🥤' : '🍜',
         ingredients,
+        // 换菜/刷新后旧贴士可能串题,直接清空(弹层通常已关闭)
+        tipsResult: '',
+        tipsError: '',
+        tipsStream: '',
       };
       if (!silent) patch.loading = false;
       this.setData(patch);
@@ -91,13 +108,53 @@ Page({
   onImagePreview(e) {
     const { images } = this.data;
     if (images.length === 0) return;
-    const index = e.detail.index;
+    const { index } = e.detail;
     wx.previewImage({ current: images[index] || images[0], urls: images });
   },
 
   /** 底部「编辑」:跳转编辑页 */
   goEdit() {
     wx.navigateTo({ url: `/packages/dish/edit?id=${this.data.id}` });
+  },
+
+  /** 打开 AI 小贴士弹层 */
+  onTipsTap() {
+    this.setData({ tipsPopupVisible: true });
+  },
+
+  /** 小贴士弹层显隐变化 */
+  onTipsPopupVisibleChange(e) {
+    if (!e.detail.visible) this.setData({ tipsPopupVisible: false });
+  },
+
+  /** 关闭小贴士弹层 */
+  onTipsClose() {
+    this.setData({ tipsPopupVisible: false });
+  },
+
+  /** 小贴士问题输入 */
+  onTipsQuestionInput(e) {
+    this.setData({ tipsQuestion: e.detail.value });
+  },
+
+  /** 生成小贴士 */
+  async onTipsGenerate() {
+    if (this.data.tipsGenerating) return;
+    this.setData({ tipsGenerating: true, tipsError: '', tipsResult: '', tipsStream: '' });
+    const res = await generateDishTips({
+      name: this.data.dish.name,
+      ingredients: this.data.ingredients,
+      question: this.data.tipsQuestion,
+      // 流式:生成中实时回显到弹层,完成后统一渲染 tipsResult
+      onChunk: (chunk) => {
+        this.setData({ tipsStream: this.data.tipsStream + chunk });
+      },
+    });
+    if (res.ok) {
+      this.setData({ tipsGenerating: false, tipsResult: res.text, tipsStream: '' });
+    } else {
+      this.setData({ tipsGenerating: false, tipsError: res.error, tipsStream: '' });
+    }
   },
 
   /** 底部「删除」:打开第一层确认弹窗 */

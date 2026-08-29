@@ -54,6 +54,15 @@
       </view>
     </view>
 
+    <!-- AI 小贴士入口(生文开启时显示) -->
+    <view wx:if="{{textEnabled}}" class="card detail-section tips-entry" bind:tap="onTipsTap">
+      <view class="tips-entry-main">
+        <text class="tips-entry-emoji">✨</text>
+        <text class="tips-entry-text">AI 小贴士（替代 / 口味调整）</text>
+      </view>
+      <text class="tips-entry-arrow">›</text>
+    </view>
+
     <!-- 做法卡:有序步骤列表(序号圆点 + 文本),为空显示引导文案 -->
     <view class="card detail-section">
       <view class="section-title">做法</view>
@@ -94,6 +103,33 @@
     bind:confirm="onDeleteReconfirmConfirm"
     bind:cancel="onDeleteReconfirmCancel"
   />
+
+  <!-- AI 小贴士弹层:底部弹出,可输问题(可跳过) -->
+  <t-popup
+    visible="{{tipsPopupVisible}}"
+    placement="bottom"
+    bind:visible-change="onTipsPopupVisibleChange"
+  >
+    <view class="tips-popup">
+      <view class="tips-popup-title">✨ AI 小贴士</view>
+      <view class="tips-popup-dish">{{dish.name}}</view>
+      <t-textarea
+        value="{{tipsQuestion}}"
+        placeholder="想了解什么？（可跳过）如：没有料酒用什么替代"
+        maxlength="100"
+        autosize
+        bind:change="onTipsQuestionInput"
+      />
+      <view wx:if="{{tipsGenerating}}" class="ai-tip">生成中，约 5-15 秒…</view>
+      <view wx:if="{{tipsGenerating && tipsStream}}" class="tips-stream">{{tipsStream}}▍</view>
+      <view wx:if="{{tipsError}}" class="tips-error">{{tipsError}}</view>
+      <view wx:if="{{tipsResult}}" class="tips-result">{{tipsResult}}</view>
+      <view class="tips-popup-btns">
+        <t-button class="action-btn" variant="outline" size="small" bind:tap="onTipsClose">关闭</t-button>
+        <t-button class="action-btn" theme="primary" size="small" loading="{{tipsGenerating}}" bind:tap="onTipsGenerate">{{tipsResult ? '再问一个' : '生成'}}</t-button>
+      </view>
+    </view>
+  </t-popup>
 
   <!-- 统一轻提示 -->
   <t-toast id="t-toast" />
