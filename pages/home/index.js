@@ -164,9 +164,9 @@ Page({
     this.searchTimer = null; // 原料搜索防抖定时器
     this.firstShow = true; // 首次 onShow 不重复刷新
     this.requestSeq = 0; // 请求序号:快速切换条件时丢弃过期响应
+    this.todaySeq = 0; // 今日卡请求序号:家庭归属切换等并发场景丢弃过期响应
     this.dishesSnapshot = null; // 菜品全量内存快照(匹配用,onShow 按需拉取)
     this.dishesSnapshotDirty = true; // 快照脏标记:onHide 置 true,onShow 重拉
-    this.identityReady = null; // 身份加载单例 Promise(避免并发重复拉取)
     this.nicknamePrompted = false; // 昵称弹层本次会话只弹一次(可关不强制,下次冷启动再弹)
     this.member = null; // 当前成员文档(null = 未注册/未就绪,数据走未分配池)
     this.init();
@@ -198,9 +198,12 @@ Page({
     if (this.dishesSnapshotDirty) {
       this.refreshDishesSnapshot();
     }
-    // 非首次进入(tab 切回)静默刷新今日记录,保证数据最新
+    // 非首次进入(tab 切回):先拉最新身份(拿到最新 familyId)再刷新今日记录,
+    // 消除旧 familyId 查询与身份查询返回乱序导致旧家庭数据覆盖的竞态
     if (!this.firstShow) {
-      this.refreshToday(true);
+      this.loadIdentity(true).then(() => {
+        this.refreshToday(true);
+      });
     }
     this.firstShow = false;
   },
@@ -227,7 +230,7 @@ Page({
     // 身份加载与数据加载并行:身份未就绪时今日卡先按未分配池('')查,不阻塞 UI;
     // 身份就绪后必须补刷一次今日卡(F25):否则按''查到的空组会一直停留到下次 onShow,
     // 家庭成员打开小程序会短暂看到"今明已定"为空(F24 既有缺陷,F25 三分组下更易感知)
-    this.loadIdentity().then(() => {
+    this.loadIdentity(false).then(() => {
       if (this.member) this.refreshToday(true);
     });
     await Promise.all([this.loadIngredients(''), this.refreshToday(false)]);
@@ -267,26 +270,26 @@ Page({
 
   /* ---------------- 身份(家庭多租户) ---------------- */
 
-  /** 加载身份:ensureIdentity 幂等单例;失败 toast 允许重试(下次调用重新发起) */
-  async loadIdentity() {
-    if (!this.identityReady) {
-      this.identityReady = ensureIdentity()
-        .then(({ member }) => {
-          // 只存页面需要的 member,不 setData 大对象
-          this.member = member;
-          // 未注册且本次会话未弹过:弹出昵称引导(可关闭不强制,未注册照常走未分配池)
-          if (member === null && !this.nicknamePrompted) {
-            this.nicknamePrompted = true;
-            this.setData({ nicknamePopupVisible: true, nicknameInput: '' });
-          }
-        })
-        .catch((err) => {
-          console.error('身份加载失败', err);
-          this.identityReady = null; // 清单例,下次调用重新发起
-          this.onShowToast('#t-toast', '身份加载失败，部分功能不可用');
-        });
+  /** 加载身份:member 每次实查(确保家庭归属变更即时生效),不作页面级单例缓存。
+   *  silent=false 首次/主动路径:未注册弹昵称引导、失败 toast;
+   *  silent=true 静默刷新路径:失败只记录不 toast、不引导昵称,保留 this.member 旧值;
+   *  今日卡补刷统一由调用方在身份 settle 后执行(familyId 已在实查后落到 this.member)。 */
+  async loadIdentity(silent = false) {
+    try {
+      const { member } = await ensureIdentity();
+      // 只存页面需要的 member,不 setData 大对象
+      this.member = member;
+      // 未注册且本次会话未弹过:弹出昵称引导(可关闭不强制,未注册照常走未分配池)
+      if (member === null && !this.nicknamePrompted && !silent) {
+        this.nicknamePrompted = true;
+        this.setData({ nicknamePopupVisible: true, nicknameInput: '' });
+      }
+    } catch (err) {
+      console.error('身份加载失败', err);
+      if (!silent) {
+        this.onShowToast('#t-toast', '身份加载失败，部分功能不可用');
+      }
     }
-    return this.identityReady;
   },
 
   /** 昵称输入 */
@@ -330,8 +333,11 @@ Page({
   /** F25 拉取今/明/后三组记录并组装展示行(菜名 + 本地 HH:mm + 原料列表);
    *  空组整组不渲染(页面按 rows.length 判断),全空时显示空态文案 */
   async refreshToday(silent) {
+    this.todaySeq = (this.todaySeq || 0) + 1;
+    const seq = this.todaySeq;
     try {
       const res = await upcomingRecords(this.member ? this.member.familyId : '');
+      if (seq !== this.todaySeq) return; // 过期响应:家庭归属切换等并发场景丢弃旧 familyId 结果
       const buildRows = (records) =>
         records.map((record) => ({
           _id: record._id,
@@ -347,6 +353,7 @@ Page({
       ];
       this.setData({ todayGroups, todayTotal: res.total });
     } catch (err) {
+      if (seq !== this.todaySeq) return; // 过期响应:丢弃,不打扰用户
       console.error('今日记录加载失败', err);
       if (!silent) this.showFail();
     }

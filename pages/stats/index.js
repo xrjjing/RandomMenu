@@ -110,7 +110,7 @@ Page({
 
   /* ---------------- 身份(家庭多租户) ---------------- */
 
-  /** 加载身份:ensureIdentity 幂等单例;失败静默降级为未分配池,不打断统计展示 */
+  /** 加载身份:ensureIdentity 不再全局单例缓存;onShow 重置后重新实查,失败静默降级为未分配池,不打断统计展示 */
   loadIdentity() {
     if (!this.identityReady) {
       this.identityReady = ensureIdentity()
